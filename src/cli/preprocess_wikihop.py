@@ -23,7 +23,7 @@ def main(input_directory, output_directory):
     # make output directory if it does not exist
     make_dir(output_directory)
 
-    pickle.dump(processed_dataset, open("processed_dataset.pickle", "wb" ))
+    pickle.dump(processed_dataset, open(output_directory + "processed_dataset.pickle", "wb" ))
 
     return processed_dataset
 
