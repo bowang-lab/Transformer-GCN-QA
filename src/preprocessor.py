@@ -1,5 +1,4 @@
 import re
-import time
 from itertools import chain
 
 import neuralcoref
@@ -7,7 +6,7 @@ import spacy
 import torch
 from tqdm import tqdm
 
-from constants import SPACY_MODEL
+from .constants import SPACY_MODEL
 
 
 class Preprocessor():
@@ -16,21 +15,28 @@ class Preprocessor():
     that can then be used to construct a graph for learning with a GCN.
     """
     def __init__(self, nlp=None):
-        # spaCy object for processing natural language
+        # SpaCy object for processing natural language
         self.nlp = nlp if nlp else spacy.load(SPACY_MODEL)
-        # adds coref to spaCy pipeline with medium sized english language model
+        # Adds coref to spaCy pipeline with medium sized english language model
         neuralcoref.add_to_pipe(self.nlp)
 
     def transform(self, dataset, model=None):
         """
         Extracts from given Wiki- or MedHop `dataset` everything we need for graph construction.
 
-        For the given Wiki- or MedHop `dataset`, returns a dictionary that contains everything we
-        for graph construction. Namely, a dictionary of dictionaries is returned that is keyed by
-        training partition (the keys in `dataset`) and the unique id of each training example. Each
-        training example is associated with a list of dictionaries containing the keys 'mention',
-        'embeddings' and 'corefs', corresponding to a candidate, its embeddings (as torch.Tensor),
-        and a list of coreferring mentions respectively.
+        For the given Wiki- or MedHop `dataset`, returns a two-tuple containig dictionary with
+        everything we need for graph construction along with a torch Tensor containing contexualized
+        word embeddings for each mention in the dictionary. The dictionaries structure looks like:
+
+        'partition' : {
+            'training_example_id': [
+                { 'mention' : The mention text as it appeared in the supporting doc
+                  'embedding_indices' : A list of indices into embeddings
+                  'corefs': A list of coreferring mentions
+                }
+                ...
+            ]
+        }
 
         Args:
             dataset (dict): A dictionary keyed by partitions ('train', 'dev', 'train.masked',
@@ -82,8 +88,8 @@ class Preprocessor():
         return processed_dataset, embeddings
 
     def _process_doc(self, doc, model, embeddings):
-        """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and  for
-        the tokens in a given in SpaCy `doc` object.
+        """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and the
+        tokens in a given in SpaCy `doc` object.
 
         Args:
             doc (spacy.Doc): SpaCy doc object containing the document to process.
@@ -107,21 +113,23 @@ class Preprocessor():
             tokens.append(tokens_in_sent)
 
         # Use model to get embeddings for each token across all sents
-        embedded_support_doc = model.predict_on_tokens(tokens)
+        contextualized_embeddings, orig_to_bert_tok_map = model.predict_on_tokens(tokens)
 
-        for sent, embeded_doc in zip(tokens, embedded_support_doc):
-            # Drop pads
-            embeded_doc_ = embeded_doc[:len(sent)]
+        for embedded_doc, tok_map in zip(contextualized_embeddings, orig_to_bert_tok_map):
+            # Retrieve embeddings for original tokens (drop CLS, SEP and PAD tokens)
+            embedded_doc = embedded_doc.cpu()
+            indices = torch.tensor(tok_map, dtype=torch.long)
+            embedded_doc = torch.index_select(embedded_doc, 0, indices)
 
             # Track the indices of the embeddings for the given tokens
             embedding_idx_start = 0 if embeddings.shape[0] == 0 else embeddings.shape[0] - 1
-            embedding_idx_end = embedding_idx_start + embeded_doc_.shape[0]
+            embedding_idx_end = embedding_idx_start + embedded_doc.shape[0]
 
             embedding_indices_ = [i for i in range(embedding_idx_start, embedding_idx_end + 1)]
             embedding_indices.extend(embedding_indices_)
 
             # Add embeddings to master list
-            embeddings = torch.cat((embeddings, embeded_doc_))
+            embeddings = torch.cat((embeddings, embedded_doc))
 
         # Flatten tokens to 1D list
         tokens = list(chain.from_iterable(tokens))
@@ -194,9 +202,9 @@ class Preprocessor():
 
                 # the first item is the mention itself, so skip it
                 for coref_start, coref_end in mention_corefs[1:]:
-                    coref_start_ = [i for i, offset in enumerate(offsets) 
+                    coref_start_ = [i for i, offset in enumerate(offsets)
                                     if offset[0] == coref_start][0]
-                    coref_end_ = [i for i, offset in enumerate(offsets) 
+                    coref_end_ = [i for i, offset in enumerate(offsets)
                                   if offset[-1] == coref_end][0]
 
                     coref_text, _, coref_embeddings_indices = \
