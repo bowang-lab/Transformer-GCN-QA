@@ -1,7 +1,8 @@
 import argparse
 import json
 import os
-import pickle
+
+import torch
 
 from ..models import BERT
 from ..preprocessor import Preprocessor
@@ -10,28 +11,43 @@ from ..utils.generic_utils import make_dir
 
 
 def main(input_directory, output_directory):
-    """Creates a dictionary from the given Wiki- or MedHop dataset (given at `input_directory`)
-    which contains everything we need for graph construction. Saves the resulting dataset to 
-    `output_directory`.
+    """Creates a json for each partition in the the given Wiki- or MedHop dataset
+    (`input_directory`) which contains everything we need for graph construction along with a
+    pickled torch Tensor containing contextualized embeddings. The json files are saved to
+    `output_directory/<partition>.json` and the pickle file to `output_directory/embeddings.pickle`.
     """
     dataset = load_wikihop(input_directory)
     preprocessor = Preprocessor()
     model = BERT()
 
-    processed_dataset = preprocessor.transform(dataset, model)
+    # Process the dataset, extracting what we need for graph construction
+    processed_dataset, embeddings = preprocessor.transform(dataset, model)
 
-    # make output directory if it does not exist
+    # Make output directory if it does not exist
     make_dir(output_directory)
 
-    pickle.dump(processed_dataset, open("processed_dataset.pickle", "wb" ))
+    # Save processed dataset as a json file, one per partition
+    for partition in processed_dataset:
+
+        output_filepath = os.path.join(output_directory, "{}.json".format(partition))
+
+        with open(output_filepath, 'w') as f:
+            json.dump(processed_dataset[partition], f)
+
+    # Save embeddings, which are a PyTorch Tensor
+    ouput_filepath_embeddings = os.path.join(output_directory, 'embeddings.pickle')
+    torch.save(ouput_filepath_embeddings)
 
     return processed_dataset
 
+
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=('Creates a dictionary for the given Wiki- or'
-                                                  ' MedHop dataset which contains everything we'
-                                                  ' need for graph construction. Saves the'
-                                                  ' resulting dataset to disk.'))
+    description = '''Creates a json for each partition in the the given Wiki- or MedHop dataset
+    (`input_directory`) which contains everything we need for graph construction along with a
+    pickled torch Tensor containing contextualized embeddings. The json files are saved to
+    `output_directory/<partition>.json` and the pickle file to `output_directory/embeddings.pickle`.
+    '''
+    parser = argparse.ArgumentParser(description=(description))
     parser.add_argument('-i', '--input', help='Path to the Wiki- or MedHop dataset.')
     parser.add_argument('-o', '--output', help=('Path to save the processed output for the Wiki-'
                                                 ' or MedHop dataset.'))

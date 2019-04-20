@@ -35,11 +35,10 @@ $ pip install -r requirements.txt
 
 The main classes are outlined below. Call `help()` on any method or class to see more usage information, for example
 
-```python
+```
 >> from src.models import BERT
-
 >> help(BERT)
->> Help on class BERT in module src.models:
+Help on class BERT in module src.models:
 
 class BERT(builtins.object)
  |  BERT(pretrained_model='bert-base-uncased')
@@ -82,7 +81,7 @@ Command line interfaces are provided for convience. Pass `--help` to any script 
 
 ```
 >> python -m src.cli.preprocess_wikihop --help
->> usage: preprocess_wikihop.py [-h] [-i INPUT] [-o OUTPUT]
+usage: preprocess_wikihop.py [-h] [-i INPUT] [-o OUTPUT]
 
 Creates a dictionary for the given Wiki- or MedHop dataset which contains
 everything we need for graph construction. Saves the resulting dataset to
@@ -107,7 +106,16 @@ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
 
 ## Troubleshooting
 
-If you have any question about our codes or methods, please open an issue.
+If you have any question about our code or methods, please open an issue.
+
+### Test suite
+
+The test suite can be found in `src/tests`. With `pytest` installed (`pip install pytest`) the test suite can be run with the following command
+
+```
+cd Transformer-GCN-QA
+python -m pytest src/tests --disable-pytest-warnings -v
+```
 
 ### Installation error from NeuralCoref
 
