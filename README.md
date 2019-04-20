@@ -11,24 +11,26 @@ It is highly recommended that you first create a virtual environment. For exampl
 ```
 $ conda create -n transformer-gcn-qa python=3 -y
 $ conda activate transformer-gcn-qa
+# Notice, the prompt has changed to indicate that the enviornment is active
+(transformer-gcn-qa) $ 
 ```
 
 Next, download the [spaCy](https://spacy.io/) english language model.
 
 ```
-$ python -m spacy download en_core_web_md
+(transformer-gcn-qa) $  python -m spacy download en_core_web_md
 ```
 
 Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly reccomended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
-conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
+(transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
 ```
 
 Finally, install all the other dependencies
 
 ```
-$ pip install -r requirements.txt
+(transformer-gcn-qa) $ pip install -r requirements.txt
 ```
 
 ## Usage
@@ -40,19 +42,6 @@ The main classes are outlined below. Call `help()` on any method or class to see
 ```
 >> from src.models import BERT
 >> help(BERT)
-Help on class BERT in module src.models:
-
-class BERT(builtins.object)
- |  BERT(pretrained_model='bert-base-uncased')
- |  
- |  A pre-trained BERT model which can be used to assign embeddings to tokenized text.
- |
- |  Args:
- |      pretrained_model (str): Name of pretrained BERT model to load. Must be in
- |      `PRETRAINED_MODELS`.
- |  
- |  Raises:
- |      ValueError if `pretrained_model` not in `PRETRAINED_MODELS`.
 ```
 
 #### `Preprocessor`
@@ -82,20 +71,7 @@ processed_dataset = preprocessor.transform(dataset, model)
 Command line interfaces are provided for convience. Pass `--help` to any script to get more usage information, for example
 
 ```
->> python -m src.cli.preprocess_wikihop --help
-usage: preprocess_wikihop.py [-h] [-i INPUT] [-o OUTPUT]
-
-Creates a dictionary for the given Wiki- or MedHop dataset which contains
-everything we need for graph construction. Saves the resulting dataset to
-disk.
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -i INPUT, --input INPUT
-                        Path to the Wiki- or MedHop dataset.
-  -o OUTPUT, --output OUTPUT
-                        Path to save the processed output for the Wiki- or
-                        MedHop dataset.
+(transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop --help
 ```
 
 #### `preprocess_wikihop.py`
@@ -115,8 +91,8 @@ If you have any question about our code or methods, please open an issue.
 The test suite can be found in `src/tests`. With `pytest` installed (`pip install pytest`) the test suite can be run with the following command
 
 ```
-cd Transformer-GCN-QA
-python -m pytest src/tests --disable-pytest-warnings -v
+(transformer-gcn-qa) $ cd Transformer-GCN-QA
+(transformer-gcn-qa) $ python -m pytest src/tests --disable-pytest-warnings -v
 ```
 
 ### Installation error from NeuralCoref
@@ -124,6 +100,6 @@ python -m pytest src/tests --disable-pytest-warnings -v
 If you get an error mentioning `spacy.strings.StringStore size changed, may indicate binary incompatibility` you will need to install `neuralcoref` from the distribution's sources
 
 ```
-$ pip uninstall neuralcoref
-$ pip install neuralcoref --no-binary neuralcoref
+(transformer-gcn-qa) $ pip uninstall neuralcoref
+(transformer-gcn-qa) $ pip install neuralcoref --no-binary neuralcoref
 ```
