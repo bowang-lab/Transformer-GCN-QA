@@ -1,5 +1,7 @@
 # Transformer-GCN-QA
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/e25aeff5b35046e3831c4517efe0b813)](https://app.codacy.com/app/JohnGiorgi/Transformer-GCN-QA?utm_source=github.com&utm_medium=referral&utm_content=berc-uoft/Transformer-GCN-QA&utm_campaign=Badge_Grade_Dashboard)
+
 A Q/A architecture based on transformers and GCNs.
 
 ## Installation
