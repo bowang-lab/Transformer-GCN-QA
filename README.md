@@ -15,7 +15,7 @@ $ conda activate transformer-gcn-qa
 (transformer-gcn-qa) $ 
 ```
 
-Next, download the [spaCy](https://spacy.io/) english language model.
+Next, download the [SpaCy](https://spacy.io/) english language model.
 
 ```
 (transformer-gcn-qa) $ python -m spacy download en_core_web_md
@@ -43,13 +43,21 @@ or install by cloning the repository
 and then using either `pip`
 
 ```
-(transformer-gcn-qa) $ pip install -r requirements.txt
+(transformer-gcn-qa) $ pip install -e .
 ```
 
  or `setuptools`
 
 ```
 (transformer-gcn-qa) $ python setup.py install
+```
+
+### Install with development requirements
+
+To run the test suite, you will need to install with
+
+```
+(transformer-gcn-qa) $ pip install -e .[dev]
 ```
 
 ## Usage
@@ -107,7 +115,9 @@ If you have any question about our code or methods, please open an issue.
 
 ### Test suite
 
-The test suite can be found in `src/tests` and can be run with the following command
+The test suite can be found in `src/tests`. To run, first follow the instructions for [installing with development requirements](#install-with-development-requirements)). 
+
+The test suite can then be run with the following command
 
 ```
 (transformer-gcn-qa) $ cd Transformer-GCN-QA
