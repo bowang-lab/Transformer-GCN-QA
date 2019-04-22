@@ -122,10 +122,10 @@ class Preprocessor():
             embedded_doc = torch.index_select(embedded_doc, 0, indices)
 
             # Track the indices of the embeddings for the given tokens
-            embedding_idx_start = 0 if embeddings.shape[0] == 0 else embeddings.shape[0] - 1
+            embedding_idx_start = 0 if embeddings.shape[0] == 0 else embeddings.shape[0]
             embedding_idx_end = embedding_idx_start + embedded_doc.shape[0]
 
-            embedding_indices_ = [i for i in range(embedding_idx_start, embedding_idx_end + 1)]
+            embedding_indices_ = [i for i in range(embedding_idx_start, embedding_idx_end)]
             embedding_indices.extend(embedding_indices_)
 
             # Add embeddings to master list

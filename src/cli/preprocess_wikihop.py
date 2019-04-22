@@ -39,7 +39,7 @@ def main(input_directory, output_directory):
     ouput_filepath_embeddings = os.path.join(output_directory, 'embeddings.pt')
     torch.save(embeddings, ouput_filepath_embeddings)
 
-    return processed_dataset
+    return processed_dataset, embeddings
 
 
 if __name__ == '__main__':
