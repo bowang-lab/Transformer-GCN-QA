@@ -18,7 +18,7 @@ $ conda activate transformer-gcn-qa
 Next, download the [spaCy](https://spacy.io/) english language model.
 
 ```
-(transformer-gcn-qa) $  python -m spacy download en_core_web_md
+(transformer-gcn-qa) $ python -m spacy download en_core_web_md
 ```
 
 Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly reccomended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
@@ -27,10 +27,29 @@ Then follow the instructions [here](https://pytorch.org/get-started/locally/) to
 (transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
 ```
 
-Finally, install all the other dependencies
+Finally, install this package straight from GitHub
+
+```
+(saber) $ pip install https://github.com/berc-uoft/Transformer-GCN-QA.git
+```
+
+or install by cloning the repository
+
+```
+(transformer-gcn-qa) $ git clone https://github.com/berc-uoft/Transformer-GCN-QA.git
+(transformer-gcn-qa) $ cd Transformer-GCN-QA
+```
+
+and then using either `pip`
 
 ```
 (transformer-gcn-qa) $ pip install -r requirements.txt
+```
+
+ or `setuptools`
+
+```
+(transformer-gcn-qa) $ python setup.py install
 ```
 
 ## Usage
@@ -57,18 +76,18 @@ preprocessor = Preprocessor()
 dataset = load_wikihop('../path/to/dataset')
 model = BERT()
 
-processed_dataset = preprocessor.transform(dataset, model)
+processed_dataset, contexualized_embeddings = preprocessor.transform(dataset, model)
 ```
 
 `processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example there is a list of dictionaries (one per supporting document) containing
 
-- `'mention'`: the exact text of a candidate found in the supporting document
-- `'embeddings'`: contextual token embeddings for the mention, assigned by `model`
-- `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embeddings'` keys.
+- `'mention'`: the exact text of a candidate found in the supporting document.
+- `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
+- `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
 
 ### Command line interface (CLI)
 
-Command line interfaces are provided for convience. Pass `--help` to any script to get more usage information, for example
+Command line interfaces are provided for convenience. Pass `--help` to any script to get more usage information, for example
 
 ```
 (transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop --help
@@ -88,11 +107,11 @@ If you have any question about our code or methods, please open an issue.
 
 ### Test suite
 
-The test suite can be found in `src/tests`. With `pytest` installed (`pip install pytest`) the test suite can be run with the following command
+The test suite can be found in `src/tests` and can be run with the following command
 
 ```
 (transformer-gcn-qa) $ cd Transformer-GCN-QA
-(transformer-gcn-qa) $ python -m pytest src/tests --disable-pytest-warnings -v
+(transformer-gcn-qa) $ tox
 ```
 
 ### Installation error from NeuralCoref
