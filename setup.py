@@ -35,5 +35,11 @@ setuptools.setup(
         "neuralcoref>=4.0",
         "pytorch-pretrained-bert>=0.6.1",
     ],
+    extras_require={
+        "dev": [
+            "pytest",
+            "tox",
+        ]
+    },
     zip_safe=False,
 )
