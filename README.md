@@ -81,9 +81,9 @@ processed_dataset, contexualized_embeddings = preprocessor.transform(dataset, mo
 
 `processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example there is a list of dictionaries (one per supporting document) containing
 
-- `'mention'`: the exact text of a candidate found in the supporting document.
-- `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
-- `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
+  - `'mention'`: the exact text of a candidate found in the supporting document.
+  - `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
+  - `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
 
 ### Command line interface (CLI)
 
