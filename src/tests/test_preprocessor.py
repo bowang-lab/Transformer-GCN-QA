@@ -23,7 +23,7 @@ class TestPreprocessor():
         test = preprocessor.nlp('My sister has a dog. She loves him.')
 
         expected_tokens = ['My', 'sister', 'has', 'a', 'dog', '.', 'She', 'loves', 'him', '.']
-        expected_offsets = [(0, 2), (3, 9), (10, 13), (14, 15), (16, 19), (19, 20), (21, 24), 
+        expected_offsets = [(0, 2), (3, 9), (10, 13), (14, 15), (16, 19), (19, 20), (21, 24),
                             (25, 30), (31, 34), (34, 35)]
         expected_corefs = [[(0, 9), (21, 24)], [(14, 19), (31, 34)]]
         expected_embedding_indices = list(range(len(expected_tokens)))
