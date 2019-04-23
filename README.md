@@ -22,11 +22,13 @@ Next, download the [SpaCy](https://spacy.io/) english language model.
 (transformer-gcn-qa) $ python -m spacy download en_core_web_md
 ```
 
-Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly reccomended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
+Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch v1.x for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
 (transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
 ```
+
+The R-GCN implementation is from [pytorch-geometric](https://github.com/rusty1s/pytorch_geometric). Setup involves ensuring various system variables are set followed by `pip` installing a number of packages. Comprehensive installation instructions can be found [here](https://rusty1s.github.io/pytorch_geometric/build/html/notes/installation.html).
 
 Finally, install this package straight from GitHub
 
@@ -94,6 +96,24 @@ processed_dataset, contexualized_embeddings = preprocessor.transform(dataset, mo
   - `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
   - `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
 
+#### `BuildGraph`
+
+This class constructs a heuristic graph for each provided sample. `BuildGraph` is instantiated with the `processed_dataset` output from `Preprocessor` as described above. Calling `BuildGraph.build()` then constructs a graph for each sample in `processed_dataset`.
+
+```python
+from src.preprocessor_graph import BuildGraph
+
+buildGraph = BuildGraph(processed_dataset)
+graphs, idxs = buildGraph.build()
+```
+
+`graphs` is a `3xN` tensor, where `N` is the sum of the number of edges across all graphs in `processed_dataset`. That is, if there are `K` samples in `processed_dataset`, then `N = N_1 + N_2 + ... + N_K` where `N_i` is the number of edges in the graph for sample i. 
+- The first two rows of `graphs` correspond to the i-th and j-th indices of an edge respectively.
+- The third row corresponds to the relation type of the edge (an integer in `[0, 1, 2, 3]`). 
+The edges and corresponding relation types for each graph are concatenated in the second dimension to ensure a single tensor can be saved for all samples.
+
+`idxs` is a dictionary containing sample ids as keys and corresponding graph tensor sizes as values. This allows the correct subtensor corresponding to the given sample from `graphs` to be extracted during training or inference time by using `torch.split()`.
+
 ### Command line interface (CLI)
 
 Command line interfaces are provided for convenience. Pass `--help` to any script to get more usage information, for example
@@ -108,6 +128,14 @@ This script will take the Wiki- or MedHop dataset and save a pickle to disk cont
 
 ```
 python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
+```
+
+#### `build_graph.py`
+
+This script will take the processed Wiki- or MedHop pickle and save the graph tensor and size indices to disk, which are then used as inputs to the model.
+
+```
+python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
 ```
 
 ## Troubleshooting
