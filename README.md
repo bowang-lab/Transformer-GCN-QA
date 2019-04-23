@@ -31,7 +31,7 @@ Then follow the instructions [here](https://pytorch.org/get-started/locally/) to
 Finally, install this package straight from GitHub
 
 ```
-(saber) $ pip install https://github.com/berc-uoft/Transformer-GCN-QA.git
+(transformer-gcn-qa) $ pip install git+https://github.com/berc-uoft/Transformer-GCN-QA.git
 ```
 
 or install by cloning the repository
