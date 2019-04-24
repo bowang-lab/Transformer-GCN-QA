@@ -2,6 +2,7 @@ import spacy
 import torch
 from pytorch_pretrained_bert import BertModel, BertTokenizer
 from torch import nn
+from torch_geometric.nn import RGCNConv
 
 from .constants import PRETRAINED_BERT_MODELS, SPACY_MODEL, PAD, CLS, SEP
 
@@ -139,7 +140,7 @@ class BERT():
 class TransformerGCNQA(nn.Module):
     """An end-to-end neural question answering achitecture based on transformers and GCNs.
     """
-    def __init__(self, batch_size, nlp=None):
+    def __init__(self, batch_size, n_rgcn_layers, rgcn_size, n_rgcn_bases=10, nlp=None):
         super().__init__()
 
         # an object for processing natural language
@@ -150,6 +151,9 @@ class TransformerGCNQA(nn.Module):
 
         # hyperparameters of the model
         self.batch_size = batch_size
+        self.n_rgcn_layers = n_rgcn_layers
+        self.rgcn_size = rgcn_size
+        self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
         # layers of the model
         self.mention_encoder = torch.nn.LSTM(input_size=768,
@@ -160,6 +164,18 @@ class TransformerGCNQA(nn.Module):
 
         self.fc_1 = nn.Linear(1536, 786)
         self.fc_2 = nn.Linear(786, 512)
+
+        # Instantiate R-GCN layers
+        self.rgcn_layers = []
+        for _ in range(self.n_rgcn_layers):
+            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, 4, self.n_rgcn_bases))
+
+        # Add R-GCN layers to model
+        for i, layer in enumerate(self.rgcn_layers):
+            self.add_module('RGCN_{}'.format(i), layer)
+
+        # Final affine transform.
+        self.out = nn.Linear(self.rgcn_size, 1)
 
     def encode_query(self, query):
         """Encodes a query (`q`) using BERT (`self.bert`).
@@ -226,7 +242,7 @@ class TransformerGCNQA(nn.Module):
 
         return self.query_mention_encoder(concat_encodings)
 
-    def forward(self, query, x):
+    def forward(self, query, x, graph):
         """TODO.
         """
         encoded_query = self.encode_query(query)
@@ -234,7 +250,23 @@ class TransformerGCNQA(nn.Module):
 
         query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mentions)
 
-        # TODO: Graph building, RGCNs, etc.
+        # Separate `graph` into edge tensor and edge relation type tensor
+        edge_index = graph[[0, 1], :]
+        edge_type  = graph[2, :]
+
+        x = query_aware_mentions
+        rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
+        for layer in self.rgcn_layers:
+            x = layer(x, edge_index, edge_type)
+            # Can add NL activations here if we want
+            rgcn_layer_outputs.append(x)
+
+        # Sum outputs from each R-GCN layer
+        x = torch.sum(torch.stack(rgcn_layer_outputs), dim=0)  # N x self.rgcn_size
+
+        out = self.out(x)  # N x 1
+        return out
+        
 
     def _get_forward_backward_hidden_states(self, hn, lstm, batch_size):
         """Helper function that returns the final forward/backward hidden states from `hn` given the

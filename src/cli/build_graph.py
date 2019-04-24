@@ -3,7 +3,7 @@ import os
 import pickle
 import torch
 
-from ..preprocessor_graph import BuildGraph
+from ..build_graph import BuildGraph
 from ..utils.generic_utils import make_dir
 
 
