@@ -22,7 +22,7 @@ Next, download the [SpaCy](https://spacy.io/) english language model.
 (transformer-gcn-qa) $ python -m spacy download en_core_web_md
 ```
 
-Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly reccomended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
+Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
 (transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
@@ -85,14 +85,16 @@ preprocessor = Preprocessor()
 dataset = load_wikihop('../path/to/dataset')
 model = BERT()
 
-processed_dataset, contexualized_embeddings = preprocessor.transform(dataset, model)
+processed_dataset, encoded_mentions = preprocessor.transform(dataset, model)
 ```
 
-`processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example there is a list of dictionaries (one per supporting document) containing
+`processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example, there is a list of dictionaries (one per supporting document) containing
 
-  - `'mention'`: the exact text of a candidate found in the supporting document.
-  - `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
-  - `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
+  - `'mention'`: The exact text of a candidate found in the supporting document.
+  - `'encoding_idx'`: Indices into `encoded_mentions` which points to the encoding for a given mention. Encodings are derived from `model`.
+  - `'corefs'`: A list of coreferent mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
+
+`encoded_mentions` is a tensor, containing an encoding for each mention in `processed_dataset`. This encoding is simply a sum of the contextualized embeddings assigned to the tokens in `'mention'` by `model`.
 
 ### Command line interface (CLI)
 
