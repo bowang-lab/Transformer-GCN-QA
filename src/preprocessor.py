@@ -9,10 +9,14 @@ from tqdm import tqdm
 from .constants import SPACY_MODEL
 
 
-class Preprocessor():
-    """This class provides methods for processing raw text. Most importantly,
+class Preprocessor(object):
+    """This class provides methods for processing the Wiki- and MedHop datasets. Most importantly,
     `Preprocessor.transform()` can be used to transform the Wiki- or MedHop datasets into a format
     that can then be used to construct a graph for learning with a GCN.
+
+    Attributes:
+        nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
+            Defaults to None.
     """
     def __init__(self, nlp=None):
         # SpaCy object for processing natural language
@@ -21,17 +25,19 @@ class Preprocessor():
         neuralcoref.add_to_pipe(self.nlp)
 
     def transform(self, dataset, model=None):
-        """
-        Extracts from given Wiki- or MedHop `dataset` everything we need for graph construction.
+        """Extracts from given Wiki- or MedHop `dataset` everything we need for graph construction.
 
-        For the given Wiki- or MedHop `dataset`, returns a two-tuple containig dictionary with
-        everything we need for graph construction along with a torch Tensor containing contexualized
-        word embeddings for each mention in the dictionary. The dictionaries structure looks like:
+        For the given Wiki- or MedHop `dataset`, returns a two-tuple containing a dictionary with
+        everything we need for graph construction along with a torch Tensor containing encodings
+        for each mention (a candidate that appeared in one or more supporting documents). Encodings
+        are produced by summing the contexualized word embeddings assigned by `model`.
+
+        The dictionaries structure looks like:
 
         'partition' : {
             'training_example_id': [
                 { 'mention' : The mention text as it appeared in the supporting doc
-                  'embedding_indices' : A list of indices into embeddings
+                  'encoding_idx' : An index into `encoded_mentions`
                   'corefs': A list of coreferring mentions
                 }
                 ...
@@ -42,18 +48,19 @@ class Preprocessor():
             dataset (dict): A dictionary keyed by partitions ('train', 'dev', 'train.masked',
                 'dev.masked') representing a loaded Wiki- or MedHop dataset.
             model (Torch.nn): Any model that defines a `predict_on_tokens()` method, which accepts
-                a list containining a tokenized sentence and returns an embedding for each token.
+                a list containining a tokenized sentence and returns a contextualized embedding for
+                each token.
 
         Returns:
             A two-tuple containing a dictionary with everything we for graph construction along with
             a torch Tensor containing contexualized word embeddings.
         """
-        embeddings = torch.Tensor([])
         processed_dataset = {}
+        encoded_mentions = []
 
         for partition, training_examples in dataset.items():
             if training_examples:
-                print('Processing partition: {}...'.format(partition))
+                print("Processing partition: '{}'...".format(partition))
 
                 processed_dataset[partition] = {}
 
@@ -65,29 +72,30 @@ class Preprocessor():
                     processed_dataset[partition][id_] = []
 
                     for supporting_doc in example['supports']:
-                        # process the supporting document (sentence segmentation and tokenization)
+                        # Process the supporting document (sentence segmentation and tokenization)
                         doc = self.nlp(supporting_doc)
+                        tokens, offsets, corefs, embeddings = self._process_doc(doc, model)
 
-                        tokens, offsets, corefs, embeddings, embedding_indices = \
-                            self._process_doc(doc=doc,
-                                              model=model,
-                                              embeddings=embeddings)
-
-                        # returns char offsets matched candidates in supporting docs
+                        # Get character offsets of matched candidates in supporting docs
                         candidate_offsets = self._find_candidates(candidates, supporting_doc)
-                        processed_candidates = \
+
+                        # Returns the final data structures for mentions and their encodings
+                        processed_candidates, encoded_mentions_ = \
                             self._process_candidates(candidate_offsets=candidate_offsets,
                                                      supporting_doc=supporting_doc,
                                                      tokens=tokens,
                                                      offsets=offsets,
                                                      corefs=corefs,
-                                                     embedding_indices=embedding_indices)
+                                                     embeddings=embeddings)
 
                         processed_dataset[partition][id_].append(processed_candidates)
+                        encoded_mentions.extend(encoded_mentions_)
 
-        return processed_dataset, embeddings
+        encoded_mentions = torch.cat(encoded_mentions)
 
-    def _process_doc(self, doc, model, embeddings):
+        return processed_dataset, encoded_mentions
+
+    def _process_doc(self, doc, model):
         """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and the
         tokens in a given in SpaCy `doc` object.
 
@@ -100,36 +108,26 @@ class Preprocessor():
             4-tuple of tokens, embeddings, coreference resolutions and character offsets for a given
             in SpaCy `doc` object.
         """
-        tokens, offsets, embedding_indices = [], [], []
+        tokens, offsets = [], []
+        contextualized_embeddings = torch.tensor([])
 
         for sent in doc.sents:
-            # Need to store the tokens seperately in order to feed them to model
-            tokens_in_sent = []
+            tokens.append([])
             # Collect text and character offsets for each token
             for token in sent:
-                tokens_in_sent.append(token.text)
+                tokens[-1].append(token.text)
                 offsets.append((token.idx, token.idx + len(token.text)))
 
-            tokens.append(tokens_in_sent)
-
         # Use model to get embeddings for each token across all sents
-        contextualized_embeddings, orig_to_bert_tok_map = model.predict_on_tokens(tokens)
+        embedded_docs, orig_to_bert_tok_map = model.predict_on_tokens(tokens)
 
-        for embedded_doc, tok_map in zip(contextualized_embeddings, orig_to_bert_tok_map):
+        for embedded_doc, tok_map in zip(embedded_docs, orig_to_bert_tok_map):
             # Retrieve embeddings for original tokens (drop CLS, SEP and PAD tokens)
-            embedded_doc = embedded_doc.cpu()
-            indices = torch.tensor(tok_map, dtype=torch.long)
-            embedded_doc = torch.index_select(embedded_doc, 0, indices)
+            embedded_doc = embedded_doc.cpu().detach()
+            orig_token_indices = torch.tensor(tok_map, dtype=torch.long)
+            embedded_doc = torch.index_select(embedded_doc, 0, orig_token_indices)
 
-            # Track the indices of the embeddings for the given tokens
-            embedding_idx_start = 0 if embeddings.shape[0] == 0 else embeddings.shape[0]
-            embedding_idx_end = embedding_idx_start + embedded_doc.shape[0]
-
-            embedding_indices_ = [i for i in range(embedding_idx_start, embedding_idx_end)]
-            embedding_indices.extend(embedding_indices_)
-
-            # Add embeddings to master list
-            embeddings = torch.cat((embeddings, embedded_doc))
+            contextualized_embeddings = torch.cat((contextualized_embeddings, embedded_doc), dim=0)
 
         # Flatten tokens to 1D list
         tokens = list(chain.from_iterable(tokens))
@@ -138,10 +136,10 @@ class Preprocessor():
         corefs = [[(mention.start_char, mention.end_char) for mention in cluster]
                   for cluster in doc._.coref_clusters]
 
-        return tokens, offsets, corefs, embeddings, embedding_indices
+        return tokens, offsets, corefs, contextualized_embeddings
 
     def _process_candidates(self, candidate_offsets, supporting_doc, tokens, offsets, corefs,
-                            embedding_indices):
+                            embeddings, encoded_mention_idx=0):
         """Returns a list of dictionaries representing processed candidate mentions.
 
         Returns a list of dictionaries representing processed candidate mentions. Candidates are
@@ -167,14 +165,18 @@ class Preprocessor():
             `supporting_doc` and `corefs`, a list of coreference mentions for a candidate found in
             `supporting_doc`.
         """
-        def _process_mention(mention_start, mention_end):
+        processed_candidates, encoded_mentions = [], []
+
+        def _process_mention(start, end):
             # Get character offsets for a given mention
-            mention_offsets = offsets[mention_start:mention_end + 1]
+            mention_offsets = offsets[start:end + 1]
+
             # Get text as it appears in the supporting document for a given mention
             mention_text = supporting_doc[mention_offsets[0][0]: mention_offsets[-1][-1]]
-            # Get the embeddings assigned by a model for the given mention
-            mention_embeddings_indices = \
-                (embedding_indices[mention_start], embedding_indices[mention_end])
+
+            # Sum the embeddings assigned by a model for the given mention to produce its encoding
+            encoded_mention = torch.sum(embeddings[start: end + 1, :], dim=0).unsqueeze(0)
+            encoded_mentions.append(encoded_mention)
 
             # TODO: This will cause us to miss coreference mentions that don't match up perfect with
             # candidates. Consider fuzzy string matching?
@@ -182,39 +184,38 @@ class Preprocessor():
                               (mention_offsets[0][0], mention_offsets[-1][-1]) in coref]
             mention_corefs = list(chain.from_iterable(mention_corefs))
 
-            return mention_text, mention_corefs, mention_embeddings_indices
-
-        processed_candidates = []
+            return mention_text, mention_corefs
 
         for cand_start, cand_end in candidate_offsets:
+            # Find the start and end char offsets for a candidate, AKA a mention
             mention_start = [i for i, offset in enumerate(offsets) if offset[0] == cand_start]
             mention_end = [i for i, offset in enumerate(offsets) if offset[-1] == cand_end]
 
             # When candidate matches only start OR end of a token (not both), we should not process
             # this candidate as it likely represents an error in candidate list of Wiki- or MedHop
             if mention_start and mention_end:
-                mention_text, mention_corefs, mention_embeddings_indices = \
-                    _process_mention(mention_start[0], mention_end[0])
+                mention_text, mention_corefs = _process_mention(mention_start[0], mention_end[0])
 
                 processed_candidates.append({'mention': mention_text,
-                                             'embeddings_indices': mention_embeddings_indices,
+                                             'encoding_idx': encoded_mention_idx,
                                              'corefs': []})
 
-                # the first item is the mention itself, so skip it
+                encoded_mention_idx += 1
+
+                # The first item is the mention itself, so skip it
                 for coref_start, coref_end in mention_corefs[1:]:
-                    coref_start_ = [i for i, offset in enumerate(offsets)
-                                    if offset[0] == coref_start][0]
-                    coref_end_ = [i for i, offset in enumerate(offsets)
-                                  if offset[-1] == coref_end][0]
+                    # Find the start and end char offsets for a coref
+                    start = [i for i, offset in enumerate(offsets) if offset[0] == coref_start][0]
+                    end = [i for i, offset in enumerate(offsets) if offset[-1] == coref_end][0]
 
-                    coref_text, _, coref_embeddings_indices = \
-                        _process_mention(coref_start_, coref_end_)
+                    coref_text, _, = _process_mention(start, end)
 
-                    processed_candidates[-1]['corefs'].append(
-                        {'mention': coref_text,
-                         'embeddings_indices': coref_embeddings_indices})
+                    processed_candidates[-1]['corefs'].append({'mention': coref_text,
+                                                               'encoding_idx': encoded_mention_idx})
 
-        return processed_candidates
+                    encoded_mention_idx += 1
+
+        return processed_candidates, encoded_mentions
 
     def _find_candidates(self, candidates, supporting_doc):
         """Finds all non-overlapping matches of `candidates` in `supporting_doc`.

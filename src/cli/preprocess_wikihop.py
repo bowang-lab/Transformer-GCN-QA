@@ -11,11 +11,22 @@ from ..utils.generic_utils import make_dir
 
 
 def main(input_directory, output_directory):
-    """Creates a json file for each partition in the the given Wiki- or MedHop dataset
+    """Saves a preprocessed Wiki- or MedHop dataset to disk.
+
+    Creates a json file for each partition in the the given Wiki- or MedHop dataset.
     (`input_directory`) which contains everything we need for graph construction along with a
-    pickled torch Tensor containing contextualized embeddings. The json files are saved to
-    `output_directory/<partition>.json` and the saved tensor to `output_directory/embeddings.pt` (
-    note that this must me loaded with `torch.load()`.
+    serialized torch Tensor containing mention encodings. The json files are saved to
+    `output_directory/<partition>.json` and the serialized tensor to
+    `output_directory/embeddings.pt` (note that this must me loaded with `torch.load()`).
+
+    Args:
+        input_directory (str): Path to the Wiki- or MedHop dataset.
+        output_directory (str): Path to save the processed output for the Wiki- or MedHop dataset.
+
+    Returns:
+        Two-tuple containing the `processed_dataset`, a dictionary containing everything we need
+        from the Wiki- or MedHop dataset at `input_directory` for graph construction, and
+        `embeddings`, a .pt file containing a serialized tensor of encoded mentions.
     """
     dataset = load_wikihop(input_directory)
     preprocessor = Preprocessor()
@@ -45,8 +56,8 @@ def main(input_directory, output_directory):
 if __name__ == '__main__':
     description = '''Creates a json for each partition in the the given Wiki- or MedHop dataset
     (`input_directory`) which contains everything we need for graph construction along with a
-    pickled torch Tensor containing contextualized embeddings. The json files are saved to
-    `output_directory/<partition>.json` and the pickle file to `output_directory/embeddings.pickle`.
+    serialized torch Tensor containing mention encodings. The json files are saved to
+    `output_directory/<partition>.json` and the embeddings to `output_directory/embeddings.pt`.
     '''
     parser = argparse.ArgumentParser(description=(description))
     parser.add_argument('-i', '--input', required=True,

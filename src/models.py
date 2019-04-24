@@ -1,17 +1,21 @@
 import spacy
 import torch
-from pytorch_pretrained_bert import BertModel, BertTokenizer
+from pytorch_pretrained_bert import BertModel
+from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
 
-from .constants import PRETRAINED_BERT_MODELS, SPACY_MODEL, PAD, CLS, SEP
-
+from .constants import CLS
+from .constants import PAD
+from .constants import PRETRAINED_BERT_MODELS
+from .constants import SEP
+from .constants import SPACY_MODEL
 from .utils import model_utils
 
 
-class BERT():
+class BERT(object):
     """A pre-trained BERT model which can be used to assign embeddings to tokenized text.
 
-    Args:
+    Attributes:
         pretrained_model (str): Name of pretrained BERT model to load. Must be in
         `PRETRAINED_BERT_MODELS`.
 
@@ -42,7 +46,7 @@ class BERT():
 
         Args:
             tokens (list): List of lists containing tokenized sentences.
-            only_cls (bool): If True, a tensor of size (len(tokens) x 768) is returned,
+            only_cls (bool): If True, a tensor of shape (len(tokens) x 768) is returned,
                 corresponding to the output of the final layer of BERT on the special sentence
                 classification token (`CLS`) for each sentence in `tokens`. This can be thought of
                 as a summary of the input sentence. Otherwise, a tensor of the same shape as
@@ -51,7 +55,7 @@ class BERT():
         Returns:
             A Tensor, containing the hidden states of the last layer in `self.model`, which
             corresponds to a contextualized token embedding for each token in `text` if `only_cls`
-            is False, otherwise a tensor of size (len(tokens) x 768) corresponding to the hidden
+            is False, otherwise a tensor of shape (len(tokens) x 768) corresponding to the hidden
             state of the last layer in `self.model` for the special sentence classification token
             (`CLS`).
         """
@@ -138,8 +142,12 @@ class BERT():
 
 class TransformerGCNQA(nn.Module):
     """An end-to-end neural question answering achitecture based on transformers and GCNs.
+
+    Attributes:
+        nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
+            Defaults to None.
     """
-    def __init__(self, batch_size, nlp=None):
+    def __init__(self, nlp=None):
         super().__init__()
 
         # an object for processing natural language
@@ -149,27 +157,30 @@ class TransformerGCNQA(nn.Module):
         self.bert = BERT()
 
         # hyperparameters of the model
-        self.batch_size = batch_size
+        # TODO
 
         # layers of the model
+        '''
         self.mention_encoder = torch.nn.LSTM(input_size=768,
                                              hidden_size=384,
                                              num_layers=1,
                                              dropout=0.3,
                                              bidirectional=True)
-
-        self.fc_1 = nn.Linear(1536, 786)
-        self.fc_2 = nn.Linear(786, 512)
+        '''
+        self.fc_1 = nn.Linear(1536, 512)
 
     def encode_query(self, query):
-        """Encodes a query (`q`) using BERT (`self.bert`).
+        """Encodes a query (`query`) using BERT (`self.bert`).
+
         Reorganizes the query into a subject-verb statment and embeds it using the
         loaded and pre-trained BERT model (`self.bert`). The embedding assigned to the [CLS] token
-        by BERT is taken as the encoded query.
+        (`constants.CLS`) by BERT is taken as the encoded query.
+
         Args:
-            q (str): A string representing the input query from Wiki- or MedHop.
+            query (str): A string representing the input query from Wiki- or MedHop.
+
         Returns:
-            A vector of size 768 containing the encoded query.
+            A tensor of size 768 containing the encoded query.
         """
         # Reorganize query into a subject-verb arrangement
         query_sv = ' '.join(query.split(' ')[1:] + query.split(' ')[0].split('_'))
@@ -189,10 +200,14 @@ class TransformerGCNQA(nn.Module):
 
         return query_encoding
 
+    # TODO (John): This will likely be removed unless we return to BiLSTM encoders
+    '''
     def encode_mentions(self, x):
         """Encodes a mention embedding (`x`) using the mention encoder (`self.mention_encoder`).
+
         Pushes mention embeddings (`x`) through a BiLSTM, (`self.mention_encoder`). The final hidden
         states of the forward and backward layers are concatenated to produce the encoded mentions.
+
         Args:
             x (torch.Tensor): Tensor of shape (seq_len, num_mentions, input_size) containing the
                 BERT embeddings for mentions (`x`).
@@ -205,37 +220,59 @@ class TransformerGCNQA(nn.Module):
 
         # Extract the final forward/backward hidden states
         final_forward_hidden_state, final_backward_hidden_state = \
-            self._get_forward_backward_hidden_states(hn, self.mention_encoder, batch_size=x.shape[1])
+            self._get_forward_backward_hidden_states(hn,
+                                                     self.mention_encoder,
+                                                     batch_size=x.shape[1])
 
         # Concat final forward/backward hidden states yields (1, 2 * hidden_size) encoded mentions
         return torch.cat((final_forward_hidden_state, final_backward_hidden_state), dim=-1)
+    '''
 
     def encode_query_aware_mentions(self, encoded_query, encoded_mentions):
         """Returns the query aware mention encodings.
+
         Concatenates the encoded query (`encoded_query`) and encoded mentions (`encoded_mentions`)
-        and pushes the resulting tensor through the query mention encoder (`query_mention_enoder`),
-        to return the query aware mention encodings.
+        and pushes the resulting tensor through a dense layer (`self.fc_1`) to return the
+        query aware mention encodings.
+
         Args:
-            TODO.
+            encoded_query (torch.Tensor): A tensor of shape 768, containing the encoded query.
+            encoded_mentions (torch.Tensor): A tensor of shape (n x 768), containing the encoded
+                mentions.
+
         Returns:
-            TODO.
+            The query aware mention encodings, derived by concatenating the encoded query with
+            each encoded mention and pushing the resulting tensor through a dense layer
+            (`self.fc_1`).
         """
         num_mentions = encoded_mentions.shape[0]
+
         concat_encodings = \
             torch.cat((encoded_query.expand(num_mentions, -1), encoded_mentions), dim=-1)
 
-        return self.query_mention_encoder(concat_encodings)
+        # Push concatenated query and mention encodings through fc layer followed by leaky ReLU
+        # activation to get our query_aware_mention_encoding
+        query_aware_mention_encoding = nn.LeakyReLU(self.fc_1(concat_encodings))
 
-    def forward(self, query, x):
-        """TODO.
+        return query_aware_mention_encoding
+
+    def forward(self, query, encoded_mentions):
+        """Hook for the forward pass of the model.
+
+        Args:
+            query (str): A string representing the input query from Wiki- or MedHop.
+            encoded_mentions (torch.Tensor): A tensor of encoded mentions, of shape
+                (num of encoded mentions x 768).
+
         """
         encoded_query = self.encode_query(query)
-        encoded_mentions = self.encode_mention(x)
 
         query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mentions)
 
-        # TODO: Graph building, RGCNs, etc.
+        # TODO (Duncan): Graph building, RGCNs, etc.
 
+    # TODO (John): This will likely be removed unless we return to BiLSTM encoders
+    '''
     def _get_forward_backward_hidden_states(self, hn, lstm, batch_size):
         """Helper function that returns the final forward/backward hidden states from `hn` given the
         LSTM that produced them (`lstm`).
@@ -251,3 +288,4 @@ class TransformerGCNQA(nn.Module):
         final_backward_hidden_state = hn[-1, -1, :, :]
 
         return final_forward_hidden_state, final_backward_hidden_state
+    '''
