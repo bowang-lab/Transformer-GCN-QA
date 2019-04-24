@@ -1,6 +1,5 @@
 import pytest
 import spacy
-import torch
 
 from ..models import BERT
 from ..preprocessor import Preprocessor
@@ -14,6 +13,7 @@ def nlp():
 
     return nlp
 
+
 @pytest.fixture
 def preprocessor(nlp):
     """Returns an instance of a Preprocessor object."""
@@ -22,16 +22,10 @@ def preprocessor(nlp):
 
     return preprocessor
 
+
 @pytest.fixture
 def model():
     """Returns an instance of a BERT object."""
     bert = BERT()
 
     return bert
-
-@pytest.fixture
-def embeddings():
-    """Returns an empty torch Tensor"""
-    embeddings = torch.tensor([])
-
-    return embeddings
