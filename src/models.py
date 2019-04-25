@@ -140,7 +140,7 @@ class BERT():
 class TransformerGCNQA(nn.Module):
     """An end-to-end neural question answering achitecture based on transformers and GCNs.
     """
-    def __init__(self, batch_size, n_rgcn_layers, rgcn_size, n_rgcn_bases=10, nlp=None):
+    def __init__(self, batch_size, n_rgcn_layers=7, rgcn_size=768, n_rgcn_bases=10, nlp=None):
         super().__init__()
 
         # an object for processing natural language
@@ -162,8 +162,7 @@ class TransformerGCNQA(nn.Module):
                                              dropout=0.3,
                                              bidirectional=True)
 
-        self.fc_1 = nn.Linear(1536, 786)
-        self.fc_2 = nn.Linear(786, 512)
+        self.fc = nn.Linear(1536, self.rgcn_size)
 
         # Instantiate R-GCN layers
         self.rgcn_layers = []
@@ -175,7 +174,7 @@ class TransformerGCNQA(nn.Module):
             self.add_module('RGCN_{}'.format(i), layer)
 
         # Final affine transform.
-        self.out = nn.Linear(self.rgcn_size, 1)
+        self.out = nn.Linear(self.rgcn_size + 768, 1)
 
     def encode_query(self, query):
         """Encodes a query (`q`) using BERT (`self.bert`).
@@ -250,11 +249,12 @@ class TransformerGCNQA(nn.Module):
 
         query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mentions)
 
+        x = self.fc(query_aware_mentions)
+
         # Separate `graph` into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
-        edge_type  = graph[2, :]
+        edge_type = graph[2, :]
 
-        x = query_aware_mentions
         rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
         for layer in self.rgcn_layers:
             x = layer(x, edge_index, edge_type)
@@ -264,9 +264,11 @@ class TransformerGCNQA(nn.Module):
         # Sum outputs from each R-GCN layer
         x = torch.sum(torch.stack(rgcn_layer_outputs), dim=0)  # N x self.rgcn_size
 
-        out = self.out(x)  # N x 1
+        # Concatenate summed R-GCN output with query
+        x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
+
+        out = self.out(x_query_cat)  # N x 1
         return out
-        
 
     def _get_forward_backward_hidden_states(self, hn, lstm, batch_size):
         """Helper function that returns the final forward/backward hidden states from `hn` given the
