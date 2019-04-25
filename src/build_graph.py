@@ -1,7 +1,7 @@
 from itertools import combinations
 
-from tqdm import tqdm
 import torch
+from tqdm import tqdm
 
 
 class BuildGraph():

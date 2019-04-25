@@ -1,11 +1,11 @@
-import spacy
 import torch
-from pytorch_pretrained_bert import BertModel, BertTokenizer
 from torch import nn
 from torch_geometric.nn import RGCNConv
 
-from .constants import PRETRAINED_BERT_MODELS, SPACY_MODEL, PAD, CLS, SEP
+import spacy
+from pytorch_pretrained_bert import BertModel, BertTokenizer
 
+from .constants import CLS, PAD, PRETRAINED_BERT_MODELS, SEP, SPACY_MODEL
 from .utils import model_utils
 
 
