@@ -57,7 +57,7 @@ and then using either `pip`
 
 ### Install with development requirements
 
-To run the test suite, you will need to install with
+To run the test suite, you will want to install with
 
 ```
 (transformer-gcn-qa) $ pip install -e .[dev]
@@ -87,16 +87,10 @@ preprocessor = Preprocessor()
 dataset = load_wikihop('../path/to/dataset')
 model = BERT()
 
-processed_dataset, encoded_mentions = preprocessor.transform(dataset, model)
+processed_candidates, encoded_mentions, encoded_mentions_split_sizes, candidate_idxs, targets = preprocessor.transform(dataset, model)
 ```
 
-`processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example, there is a list of dictionaries (one per supporting document) containing
-
-  - `'mention'`: The exact text of a candidate found in the supporting document.
-  - `'encoding_idx'`: Indices into `encoded_mentions` which points to the encoding for a given mention. Encodings are derived from `model`.
-  - `'corefs'`: A list of coreferent mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
-
-`encoded_mentions` is a tensor, containing an encoding for each mention in `processed_dataset`. This encoding is simply a sum of the contextualized embeddings assigned to the tokens in `'mention'` by `model`.
+The returned tuple contains 5 dictionaries, keyed by dataset partition, with everything we need for graph construction and training. See `help(Preprocessor.transform)` for more information about each object
 
 #### `BuildGraph`
 
@@ -129,7 +123,7 @@ Command line interfaces are provided for convenience. Pass `--help` to any scrip
 This script will take the Wiki- or MedHop dataset and save a pickle to disk containing everything we need to assemble the graph
 
 ```
-python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
+(transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
 ```
 
 #### `build_graph.py`
@@ -137,7 +131,7 @@ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
 This script will take the processed Wiki- or MedHop pickle and save the graph tensor and size indices to disk, which are then used as inputs to the model.
 
 ```
-python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
+(transformer-gcn-qa) $ python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
 ```
 
 ## Troubleshooting
