@@ -3,6 +3,7 @@ import torch
 from pytorch_pretrained_bert import BertModel
 from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
+from torch_geometric.nn import RGCNConv
 
 from .constants import CLS
 from .constants import PAD
@@ -147,7 +148,7 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None):
+    def __init__(self, batch_size, n_rgcn_layers, rgcn_size, n_rgcn_bases=10, nlp=None):
         super().__init__()
 
         # an object for processing natural language
@@ -157,7 +158,10 @@ class TransformerGCNQA(nn.Module):
         self.bert = BERT()
 
         # hyperparameters of the model
-        # TODO
+        self.batch_size = batch_size
+        self.n_rgcn_layers = n_rgcn_layers
+        self.rgcn_size = rgcn_size
+        self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
         # layers of the model
         '''
@@ -168,6 +172,18 @@ class TransformerGCNQA(nn.Module):
                                              bidirectional=True)
         '''
         self.fc_1 = nn.Linear(1536, 512)
+
+        # Instantiate R-GCN layers
+        self.rgcn_layers = []
+        for _ in range(self.n_rgcn_layers):
+            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, 4, self.n_rgcn_bases))
+
+        # Add R-GCN layers to model
+        for i, layer in enumerate(self.rgcn_layers):
+            self.add_module('RGCN_{}'.format(i), layer)
+
+        # Final affine transform.
+        self.out = nn.Linear(self.rgcn_size, 1)
 
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
@@ -256,20 +272,34 @@ class TransformerGCNQA(nn.Module):
 
         return query_aware_mention_encoding
 
-    def forward(self, query, encoded_mentions):
+    def forward(self, query, encoded_mention, graph):
         """Hook for the forward pass of the model.
 
         Args:
             query (str): A string representing the input query from Wiki- or MedHop.
             encoded_mentions (torch.Tensor): A tensor of encoded mentions, of shape
                 (num of encoded mentions x 768).
-
         """
         encoded_query = self.encode_query(query)
 
-        query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mentions)
+        query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mention)
 
-        # TODO (Duncan): Graph building, RGCNs, etc.
+        # Separate `graph` into edge tensor and edge relation type tensor
+        edge_index = graph[[0, 1], :]
+        edge_type = graph[2, :]
+
+        x = query_aware_mentions
+        rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
+        for layer in self.rgcn_layers:
+            x = layer(x, edge_index, edge_type)
+            # Can add NL activations here if we want
+            rgcn_layer_outputs.append(x)
+
+        # Sum outputs from each R-GCN layer
+        x = torch.sum(torch.stack(rgcn_layer_outputs), dim=0)  # N x self.rgcn_size
+
+        out = self.out(x)  # N x 1
+        return out
 
     # TODO (John): This will likely be removed unless we return to BiLSTM encoders
     '''
