@@ -22,7 +22,7 @@ Next, download the [SpaCy](https://spacy.io/) english language model.
 (transformer-gcn-qa) $ python -m spacy download en_core_web_md
 ```
 
-Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch v1.x for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
+Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
 (transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
@@ -57,7 +57,7 @@ and then using either `pip`
 
 ### Install with development requirements
 
-To run the test suite, you will need to install with
+To run the test suite, you will want to install with
 
 ```
 (transformer-gcn-qa) $ pip install -e .[dev]
@@ -87,14 +87,10 @@ preprocessor = Preprocessor()
 dataset = load_wikihop('../path/to/dataset')
 model = BERT()
 
-processed_dataset, contexualized_embeddings = preprocessor.transform(dataset, model)
+processed_candidates, encoded_mentions, encoded_mentions_split_sizes, candidate_idxs, targets = preprocessor.transform(dataset, model)
 ```
 
-`processed_dataset` is a dictionary of dictionaries, keyed by partition and training example IDs from the loaded Wiki- or MedHop dataset. For each training example there is a list of dictionaries (one per supporting document) containing
-
-  - `'mention'`: the exact text of a candidate found in the supporting document.
-  - `'embedding_indices'`: indices into `contexualized_embeddings` which points to the contextual token embeddings for the mention, assigned by `model`.
-  - `'corefs'`: a list of coreferring mentions, which themselves are dictionaries with `'mention'` and `'embedding_indices'` keys.
+The returned tuple contains 5 dictionaries, keyed by dataset partition, with everything we need for graph construction and training. See `help(Preprocessor.transform)` for more information about each object
 
 #### `BuildGraph`
 
@@ -127,7 +123,7 @@ Command line interfaces are provided for convenience. Pass `--help` to any scrip
 This script will take the Wiki- or MedHop dataset and save a pickle to disk containing everything we need to assemble the graph
 
 ```
-python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
+(transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
 ```
 
 #### `build_graph.py`
@@ -135,7 +131,7 @@ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
 This script will take the processed Wiki- or MedHop pickle and save the graph tensor and size indices to disk, which are then used as inputs to the model.
 
 ```
-python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
+(transformer-gcn-qa) $ python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
 ```
 
 ## Troubleshooting
