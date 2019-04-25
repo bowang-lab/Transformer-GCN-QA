@@ -11,8 +11,8 @@ from .constants import SPACY_MODEL
 
 class Preprocessor(object):
     """This class provides methods for processing the Wiki- and MedHop datasets. Most importantly,
-    `Preprocessor.transform()` can be used to transform the Wiki- or MedHop datasets into a format
-    that can then be used to construct a graph for learning with a GCN.
+    `Preprocessor.transform()` can be used to extract from the Wiki- or MedHop datasets everything
+    we need for graph construction and training.
 
     Attributes:
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
@@ -25,24 +25,31 @@ class Preprocessor(object):
         neuralcoref.add_to_pipe(self.nlp)
 
     def transform(self, dataset, model=None):
-        """Extracts from given Wiki- or MedHop `dataset` everything we need for graph construction.
+        """Extracts `dataset` everything needed for graph construction and training.
 
-        For the given Wiki- or MedHop `dataset`, returns a two-tuple containing a dictionary with
-        everything we need for graph construction along with a torch Tensor containing encodings
-        for each mention (a candidate that appeared in one or more supporting documents). Encodings
-        are produced by summing the contexualized word embeddings assigned by `model`.
+        For the given Wiki- or MedHop `dataset`, returns a 5-tuple containing everything we need
+        for graph construction and training. Each element in the tuple is a dictionary keyed by
+        a dataset partition name (e.g. 'train', 'dev', 'train.masked', 'dev.masked'). The values
+        of these dictionaries are outlined below:
 
-        The dictionaries structure looks like:
+            - processed_candidates: A dictionary, keyed by example id, containing all mentions (a
+                candidate that appeared in one or more supporting documents) and their coreferents
+                for each example in a partition. E.g. processed_candidates['train'] looks like
 
-        'partition' : {
-            'training_example_id': [
-                { 'mention' : The mention text as it appeared in the supporting doc
-                  'encoding_idx' : An index into `encoded_mentions`
-                  'corefs': A list of coreferring mentions
-                }
-                ...
-            ]
-        }
+                'example_id': [
+                    {
+                        'mention' : Mention text as it appears in supporting doc.
+                        'corefs': A list of coreferent mentions.
+                    }
+                    ...
+                ]
+            - encoded_mentions: A torch Tensor containing encodings for each mention. Encodings
+                are produced by summing the contexualized word embeddings assigned by `model`.
+            - encoded_mentions_split_sizes: A torch Tensor containing the chunk sizes. To be used
+                with torch.split() to break encoded_mentions up into individual training examples
+            - candidate_idxs: Dictionary mapping candidates to indices in encoded_mentions (after
+                a torch.split() has been called using encoded_mentions_split_sizes).
+            - targets: List of one-hot encoded answers.
 
         Args:
             dataset (dict): A dictionary keyed by partitions ('train', 'dev', 'train.masked',
@@ -52,24 +59,37 @@ class Preprocessor(object):
                 each token.
 
         Returns:
-            A two-tuple containing a dictionary with everything we for graph construction along with
-            a torch Tensor containing contexualized word embeddings.
+            A 5-tuple of dictionaries, keyed by partition, containing everything we need for graph
+            construction and training.
         """
-        processed_dataset = {}
-        encoded_mentions = []
+        processed_candidates = {}
+        encoded_mentions = {}
+        encoded_mentions_split_sizes = {}
+        candidate_idxs = {}
+        targets = {}
 
         for partition, training_examples in dataset.items():
             if training_examples:
                 print("Processing partition: '{}'...".format(partition))
 
-                processed_dataset[partition] = {}
+                processed_candidates[partition] = {}
+                encoded_mentions[partition] = []
+                encoded_mentions_split_sizes[partition] = []
+                candidate_idxs[partition] = []
+                targets[partition] = []
 
                 for example in tqdm(training_examples):
 
-                    id_ = example['id']
+                    example_id = example['id']
                     candidates = example['candidates']
+                    answer = example['answer']
 
-                    processed_dataset[partition][id_] = []
+                    # One-hot encode answer and accumulate
+                    one_hot = [1 if candidate == answer else 0 for candidate in candidates]
+                    targets[partition].append(one_hot)
+
+                    processed_candidates[partition][example_id] = []
+                    encoded_mentions_split_sizes[partition]
 
                     for supporting_doc in example['supports']:
                         # Process the supporting document (sentence segmentation and tokenization)
@@ -80,7 +100,7 @@ class Preprocessor(object):
                         candidate_offsets = self._find_candidates(candidates, supporting_doc)
 
                         # Returns the final data structures for mentions and their encodings
-                        processed_candidates, encoded_mentions_ = \
+                        processed_candidates_, encoded_mentions_, candidate_idxs_ = \
                             self._process_candidates(candidate_offsets=candidate_offsets,
                                                      supporting_doc=supporting_doc,
                                                      tokens=tokens,
@@ -88,12 +108,19 @@ class Preprocessor(object):
                                                      corefs=corefs,
                                                      embeddings=embeddings)
 
-                        processed_dataset[partition][id_].append(processed_candidates)
-                        encoded_mentions.extend(encoded_mentions_)
+                        processed_candidates[partition][example_id].append(processed_candidates_)
+                        encoded_mentions[partition].extend(encoded_mentions_)
+                        candidate_idxs[partition].append(candidate_idxs_)
 
-        encoded_mentions = torch.cat(encoded_mentions)
+                    # Accumulate chunk sizes per training example
+                    encoded_mentions_split_sizes[partition].append(len(encoded_mentions_))
 
-        return processed_dataset, encoded_mentions
+                encoded_mentions[partition] = torch.cat(encoded_mentions[partition])
+                encoded_mentions_split_sizes[partition] = \
+                    torch.tensor(encoded_mentions_split_sizes[partition])
+
+        return (processed_candidates, encoded_mentions, encoded_mentions_split_sizes,
+                candidate_idxs, targets)
 
     def _process_doc(self, doc, model):
         """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and the
@@ -139,25 +166,28 @@ class Preprocessor(object):
         return tokens, offsets, corefs, contextualized_embeddings
 
     def _process_candidates(self, candidate_offsets, supporting_doc, tokens, offsets, corefs,
-                            embeddings, encoded_mention_idx=0):
-        """Returns a list of dictionaries representing processed candidate mentions.
+                            embeddings):
+        """Returns a three-tuple of processed candidates, encoded mentions and candidate indices.
 
-        Returns a list of dictionaries representing processed candidate mentions. Candidates are
-        found by searching `tokens` for tokens with character offsets matching those in
-        `candidate_offsets`. For every mention, a dictionary containing the mention along with its
-        corresponding, contextualized embedding from `embeddings` and all coreference mentions.
+        Returns a three-tuple of processed candidates, encoded mentions and candidate indices:
+
+        - processed_candidates: A list containing all mentions (a candidate that appeared in
+        - encoded_mentions: A torch Tensor containing encodings for each mention. Encodings
+            are produced by summing the contexualized word embeddings `embeddings` assigned to each
+            token in a mention.
+        - candidate_idxs: Dictionary mapping candidates to indices in encoded_mentions (after
 
         Args:
             candidate_offsets (list): List of tuples containing the start and end character offsets
                 for candidates in `supporting_doc`.
             supporting_doc (str): A single supporting document from Wiki- or MedHop.
             tokens (list): List containing all tokens in `supporting_doc`.
-            embeddings (torch.tensor): An tensor containing contexualized embeddings for each token
-                in `tokens`.
-            corefs (list): List of lists of tuples containing the start and end character offsets
-                for all mentions in a coreference cluster.
             offsets (list): List of tuples containing the start and end character offsets for all
                 tokens in `supporting_doc`.
+            corefs (list): List of lists of tuples containing the start and end character offsets
+                for all mentions in a coreference cluster.
+            embeddings (torch.tensor): An tensor containing contexualized embeddings for each token
+                in `tokens`.
 
         Returns:
             A list of dictionaries containing 'mention', the text of a candidate found in
@@ -165,7 +195,10 @@ class Preprocessor(object):
             `supporting_doc` and `corefs`, a list of coreference mentions for a candidate found in
             `supporting_doc`.
         """
-        processed_candidates, encoded_mentions = [], []
+        processed_candidates = []
+        encoded_mentions = []
+        encoded_mention_idx = 0
+        candidate_idxs = {}
 
         def _process_mention(start, end):
             # Get character offsets for a given mention
@@ -176,7 +209,6 @@ class Preprocessor(object):
 
             # Sum the embeddings assigned by a model for the given mention to produce its encoding
             encoded_mention = torch.sum(embeddings[start: end + 1, :], dim=0).unsqueeze(0)
-            encoded_mentions.append(encoded_mention)
 
             # TODO: This will cause us to miss coreference mentions that don't match up perfect with
             # candidates. Consider fuzzy string matching?
@@ -184,7 +216,17 @@ class Preprocessor(object):
                               (mention_offsets[0][0], mention_offsets[-1][-1]) in coref]
             mention_corefs = list(chain.from_iterable(mention_corefs))
 
-            return mention_text, mention_corefs
+            return mention_text, mention_corefs, encoded_mention
+
+        def _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx=0):
+            if mention_text in candidate_idxs:
+                candidate_idxs[mention_text].append(encoded_mention_idx)
+            else:
+                candidate_idxs[mention_text] = [encoded_mention_idx]
+
+            encoded_mention_idx += 1
+
+            return candidate_idxs, encoded_mention_idx
 
         for cand_start, cand_end in candidate_offsets:
             # Find the start and end char offsets for a candidate, AKA a mention
@@ -194,28 +236,29 @@ class Preprocessor(object):
             # When candidate matches only start OR end of a token (not both), we should not process
             # this candidate as it likely represents an error in candidate list of Wiki- or MedHop
             if mention_start and mention_end:
-                mention_text, mention_corefs = _process_mention(mention_start[0], mention_end[0])
+                # Gets the mentions text, its corefs, and updates encoded_mentions
+                mention_text, mention_corefs, encoded_mention = \
+                    _process_mention(mention_start[0], mention_end[0])
+                processed_candidates.append({'mention': mention_text, 'corefs': []})
+                encoded_mentions.append(encoded_mention)
 
-                processed_candidates.append({'mention': mention_text,
-                                             'encoding_idx': encoded_mention_idx,
-                                             'corefs': []})
-
-                encoded_mention_idx += 1
+                # Maintains a mapping from candidates to their position in encoded_mentions
+                candidate_idxs, encoded_mention_idx = \
+                    _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx)
 
                 # The first item is the mention itself, so skip it
                 for coref_start, coref_end in mention_corefs[1:]:
-                    # Find the start and end char offsets for a coref
                     start = [i for i, offset in enumerate(offsets) if offset[0] == coref_start][0]
                     end = [i for i, offset in enumerate(offsets) if offset[-1] == coref_end][0]
 
-                    coref_text, _, = _process_mention(start, end)
+                    coref_text, _, encoded_mention = _process_mention(start, end)
+                    processed_candidates[-1]['corefs'].append({'mention': coref_text})
+                    encoded_mentions.append(encoded_mention)
 
-                    processed_candidates[-1]['corefs'].append({'mention': coref_text,
-                                                               'encoding_idx': encoded_mention_idx})
+                    candidate_idxs, encoded_mention_idx = \
+                        _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx)
 
-                    encoded_mention_idx += 1
-
-        return processed_candidates, encoded_mentions
+        return processed_candidates, encoded_mentions, candidate_idxs
 
     def _find_candidates(self, candidates, supporting_doc):
         """Finds all non-overlapping matches of `candidates` in `supporting_doc`.
