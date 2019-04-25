@@ -52,7 +52,7 @@ def main(input_directory, output_directory):
         targets_filepath = os.path.join(partition_directory, "targets.json")
 
         # Create PyTorch .pt filepaths
-        mention_encodings_filepath = os.path.join(partition_directory, 'mention_encodings.pt')
+        mention_encodings_filepath = os.path.join(partition_directory, 'encoded_mentions.pt')
         encoded_mentions_split_sizes_filepath = os.path.join(partition_directory,
                                                              'encoded_mentions_split_sizes.pt')
 
