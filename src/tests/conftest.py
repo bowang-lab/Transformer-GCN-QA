@@ -1,9 +1,22 @@
 import pytest
 import spacy
-import torch
+from pkg_resources import resource_filename
 
 from ..models import BERT
 from ..preprocessor import Preprocessor
+from ..utils.dataset_utils import load_wikihop
+
+# Constants
+PATH_TO_DUMMY_DATASET = resource_filename(__name__, 'resources/dummy_dataset')
+
+# Fixtures
+@pytest.fixture
+def dataset():
+    """Returns a loaded dataset, which is structured like Wiki- or MedHop
+    """
+    dataset = load_wikihop(PATH_TO_DUMMY_DATASET)
+
+    return dataset
 
 
 @pytest.fixture
@@ -14,6 +27,7 @@ def nlp():
 
     return nlp
 
+
 @pytest.fixture
 def preprocessor(nlp):
     """Returns an instance of a Preprocessor object."""
@@ -22,16 +36,10 @@ def preprocessor(nlp):
 
     return preprocessor
 
+
 @pytest.fixture
 def model():
     """Returns an instance of a BERT object."""
     bert = BERT()
 
     return bert
-
-@pytest.fixture
-def embeddings():
-    """Returns an empty torch Tensor"""
-    embeddings = torch.tensor([])
-
-    return embeddings

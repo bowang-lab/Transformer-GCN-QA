@@ -5,7 +5,11 @@ from tqdm import tqdm
 
 
 class BuildGraph():
+    """TODO (Duncan)
 
+    Attributes:
+    """
+    
     def __init__(self, samples):
         """Given the preprocessed training dictionary obtained from preprocessor.py,
         constructs a heuristic graph for each training example.
