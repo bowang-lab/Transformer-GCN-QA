@@ -210,6 +210,7 @@ class Preprocessor(object):
 
             # Get text as it appears in the supporting document for a given mention
             mention_text = supporting_doc[mention_offsets[0][0]: mention_offsets[-1][-1]]
+            mention_text = mention_text.lower()  # Candidates/answers in Wiki/Med- Hop are lowercase
 
             # Sum the embeddings assigned by a model for the given mention to produce its encoding
             encoded_mention = torch.sum(embeddings[start: end + 1, :], dim=0).unsqueeze(0)

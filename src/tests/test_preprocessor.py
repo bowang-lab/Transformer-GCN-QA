@@ -21,12 +21,12 @@ class TestPreprocessor():
                 'WH_train_0': [[]],
                 'WH_train_1': [
                     [
-                        {'mention': 'English', 'corefs': []},
-                        {'mention': 'Spanish', 'corefs': []},
+                        {'mention': 'english', 'corefs': []},
+                        {'mention': 'spanish', 'corefs': []},
                     ],
                     [
-                        {'mention': 'Nahuatl', 'corefs': []},
-                        {'mention': 'Spanish', 'corefs': []},
+                        {'mention': 'nahuatl', 'corefs': []},
+                        {'mention': 'spanish', 'corefs': []},
                     ]
                 ]
             }
@@ -35,9 +35,9 @@ class TestPreprocessor():
         expected_candidate_idxs = {
             'train': [
                 {},
-                {'English': [0],
-                 'Spanish': [1, 3],
-                 'Nahuatl': [2]}
+                {'english': [0],
+                 'spanish': [1, 3],
+                 'nahuatl': [2]}
             ]
         }
         expected_targets = {'train': [[1, 0, 0], [1, 0, 0, 0, 0]]}
@@ -79,10 +79,10 @@ class TestPreprocessor():
 
         expected_processed_candidates = [
             {
-                'mention': 'My sister',
+                'mention': 'my sister',
                 'corefs': [
                     {
-                        'mention': 'She',
+                        'mention': 'she',
                     }
                 ]
             },
@@ -97,7 +97,7 @@ class TestPreprocessor():
         ]
 
         expected_candidate_idxs = {
-            'My sister': [0, 1],
+            'my sister': [0, 1],
             'a dog': [2, 3]
         }
 
