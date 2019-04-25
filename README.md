@@ -19,6 +19,7 @@ $ conda activate transformer-gcn-qa
 Next, download the [SpaCy](https://spacy.io/) english language model.
 
 ```
+(transformer-gcn-qa) $ pip install spacy
 (transformer-gcn-qa) $ python -m spacy download en_core_web_md
 ```
 
