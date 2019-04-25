@@ -8,6 +8,43 @@ class TestPreprocessor():
     """Collects all unit tests for `src.preprocessor.Preprocessor` a class for preprocessing Wiki-
     or MedHop.
     """
+    def test_transform_simple(self, dataset, preprocessor, model):
+        """
+        """
+        (actual_processed_candidates, actual_encoded_mentions,
+         actual_encoded_mentions_split_sizes, actual_candidate_idxs, actual_targets) = \
+            preprocessor.transform(dataset, model)
+
+        # TODO 1 Example should include corefs
+        expected_processed_candidates = {
+            'train': {
+                'WH_train_0': [[]],
+                'WH_train_1': [
+                    [
+                        {'mention': 'English', 'corefs': []},
+                        {'mention': 'Spanish', 'corefs': []}
+                    ]
+                ]
+            }
+        }
+        expected_encoded_mentions_split_sizes = torch.tensor([0, 2])
+        expected_candidate_idxs = {
+            'train': [
+                {},
+                {'English': [0],
+                 'Spanish': [1]}
+            ]
+        }
+        expected_targets = {'train': [[1, 0, 0], [1, 0, 0, 0, 0]]}
+
+        assert expected_processed_candidates == actual_processed_candidates
+        # 2 because there are two mentions and 768 b/c it is the size of BERT encodings
+        assert actual_encoded_mentions['train'].shape == (2, 768)
+        assert torch.equal(expected_encoded_mentions_split_sizes,
+                           actual_encoded_mentions_split_sizes['train'])
+        assert expected_candidate_idxs == actual_candidate_idxs
+        assert expected_targets == actual_targets
+
     def test_process_doc_simple(self, preprocessor, model):
         """Given a simple example, asserts that `preprocessor._process_doc` returns the expected
         values.
@@ -38,30 +75,31 @@ class TestPreprocessor():
         expected_processed_candidates = [
             {
                 'mention': 'My sister',
-                'encoding_idx': 0,
                 'corefs': [
                     {
                         'mention': 'She',
-                        'encoding_idx': 1,
                     }
                 ]
             },
             {
                 'mention': 'a dog',
-                'encoding_idx': 2,
                 'corefs': [
                     {
                         'mention': 'him',
-                        'encoding_idx': 3
                     }
                 ]
             },
         ]
 
+        expected_candidate_idxs = {
+            'My sister': [0, 1],
+            'a dog': [2, 3]
+        }
+
         tokens, offsets, corefs, embeddings = preprocessor._process_doc(doc, model)
         candidate_offsets = preprocessor._find_candidates(candidates, supporting_doc)
 
-        actual_processed_candidates, actual_encoded_mentions = \
+        actual_processed_candidates, actual_encoded_mentions, actual_candidate_idxs = \
             preprocessor._process_candidates(candidate_offsets=candidate_offsets,
                                              supporting_doc=supporting_doc,
                                              tokens=tokens,
@@ -70,9 +108,10 @@ class TestPreprocessor():
                                              embeddings=embeddings)
 
         assert expected_processed_candidates == actual_processed_candidates
-        assert len(actual_encoded_mentions) == 4
+        assert expected_candidate_idxs == actual_candidate_idxs
         # 4 because there are two mentions, each with a coreferent mention, and 768 b/c it is the
         # size of BERT encodings
+        assert len(actual_encoded_mentions) == 4
         assert torch.cat(actual_encoded_mentions, dim=0).shape == (4, 768)
 
     def test_find_candidates_simple(self, preprocessor):
