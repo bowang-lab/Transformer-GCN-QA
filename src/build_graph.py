@@ -1,4 +1,3 @@
-# from pprint import pprint
 from itertools import combinations
 
 import torch
@@ -10,6 +9,7 @@ class BuildGraph():
 
     Attributes:
     """
+    
     def __init__(self, samples):
         """Given the preprocessed training dictionary obtained from preprocessor.py,
         constructs a heuristic graph for each training example.
@@ -29,8 +29,8 @@ class BuildGraph():
                 type of the edge (an integer in [0, 1, 2, 3]). The edges and
                 corresponding relation types for each graph are concatenated in
                 the second dimension to ensure a single tensor can be saved for
-                all samples.
-
+                all samples. 
+                    
             idxs (dict): A dictionary containing sample ids as keys and
                 corresponding graph tensor sizes as values. This allows the
                 correct subtensor corresponding to the given sample from `graphs`
