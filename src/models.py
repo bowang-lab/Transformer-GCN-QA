@@ -164,12 +164,6 @@ class TransformerGCNQA(nn.Module):
         self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
         # layers of the model
-        self.mention_encoder = torch.nn.LSTM(input_size=768,
-                                             hidden_size=384,
-                                             num_layers=1,
-                                             dropout=0.3,
-                                             bidirectional=True)
-
         self.fc = nn.Linear(1536, self.rgcn_size)
 
         # Instantiate R-GCN layers
@@ -181,7 +175,7 @@ class TransformerGCNQA(nn.Module):
         for i, layer in enumerate(self.rgcn_layers):
             self.add_module('RGCN_{}'.format(i), layer)
 
-        # Final affine transform.
+        # Final affine transform
         self.out = nn.Linear(self.rgcn_size + 768, 1)
 
     def encode_query(self, query):
@@ -274,20 +268,5 @@ class TransformerGCNQA(nn.Module):
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
 
         out = self.out(x_query_cat)  # N x 1
+
         return out
-
-    def _get_forward_backward_hidden_states(self, hn, lstm, batch_size):
-        """Helper function that returns the final forward/backward hidden states from `hn` given the
-        LSTM that produced them (`lstm`).
-        """
-        # Reshape it in order to be able to extract final forward/backward hidden states
-        num_layers = lstm.num_layers
-        num_directions = 2 if lstm.bidirectional else 1
-        hidden_size = lstm.hidden_size
-
-        hn = hn.view(num_layers, num_directions, batch_size, hidden_size)
-
-        final_forward_hidden_state = hn[-1, 0, :, :]
-        final_backward_hidden_state = hn[-1, -1, :, :]
-
-        return final_forward_hidden_state, final_backward_hidden_state
