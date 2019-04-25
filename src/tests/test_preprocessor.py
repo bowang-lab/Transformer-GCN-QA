@@ -22,24 +22,29 @@ class TestPreprocessor():
                 'WH_train_1': [
                     [
                         {'mention': 'English', 'corefs': []},
-                        {'mention': 'Spanish', 'corefs': []}
+                        {'mention': 'Spanish', 'corefs': []},
+                    ],
+                    [
+                        {'mention': 'Nahuatl', 'corefs': []},
+                        {'mention': 'Spanish', 'corefs': []},
                     ]
                 ]
             }
         }
-        expected_encoded_mentions_split_sizes = torch.tensor([0, 2])
+        expected_encoded_mentions_split_sizes = torch.tensor([0, 4])
         expected_candidate_idxs = {
             'train': [
                 {},
                 {'English': [0],
-                 'Spanish': [1]}
+                 'Spanish': [1, 3],
+                 'Nahuatl': [2]}
             ]
         }
         expected_targets = {'train': [[1, 0, 0], [1, 0, 0, 0, 0]]}
 
         assert expected_processed_candidates == actual_processed_candidates
-        # 2 because there are two mentions and 768 b/c it is the size of BERT encodings
-        assert actual_encoded_mentions['train'].shape == (2, 768)
+        # 4 because there are four mentions and 768 b/c it is the size of BERT encodings
+        assert actual_encoded_mentions['train'].shape == (4, 768)
         assert torch.equal(expected_encoded_mentions_split_sizes,
                            actual_encoded_mentions_split_sizes['train'])
         assert expected_candidate_idxs == actual_candidate_idxs
@@ -99,13 +104,15 @@ class TestPreprocessor():
         tokens, offsets, corefs, embeddings = preprocessor._process_doc(doc, model)
         candidate_offsets = preprocessor._find_candidates(candidates, supporting_doc)
 
-        actual_processed_candidates, actual_encoded_mentions, actual_candidate_idxs = \
+        (actual_processed_candidates, actual_candidate_idxs, actual_encoded_mentions,
+         encoded_mention_idx) = \
             preprocessor._process_candidates(candidate_offsets=candidate_offsets,
                                              supporting_doc=supporting_doc,
                                              tokens=tokens,
                                              offsets=offsets,
                                              corefs=corefs,
-                                             embeddings=embeddings)
+                                             embeddings=embeddings,
+                                             candidate_idxs={},)
 
         assert expected_processed_candidates == actual_processed_candidates
         assert expected_candidate_idxs == actual_candidate_idxs
@@ -113,6 +120,7 @@ class TestPreprocessor():
         # size of BERT encodings
         assert len(actual_encoded_mentions) == 4
         assert torch.cat(actual_encoded_mentions, dim=0).shape == (4, 768)
+        assert encoded_mention_idx == 4
 
     def test_find_candidates_simple(self, preprocessor):
         """Given a simple example, asserts that `preprocessor._find_candidates` returns the expected

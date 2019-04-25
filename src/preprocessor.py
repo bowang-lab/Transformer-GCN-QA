@@ -89,7 +89,9 @@ class Preprocessor(object):
                     targets[partition].append(one_hot)
 
                     processed_candidates[partition][example_id] = []
-                    encoded_mentions_split_sizes[partition]
+                    candidate_idxs[partition].append({})
+                    # Keeps track of the mentions index in encoded_mentions
+                    encoded_mention_idx = 0
 
                     for supporting_doc in example['supports']:
                         # Process the supporting document (sentence segmentation and tokenization)
@@ -100,20 +102,24 @@ class Preprocessor(object):
                         candidate_offsets = self._find_candidates(candidates, supporting_doc)
 
                         # Returns the final data structures for mentions and their encodings
-                        processed_candidates_, encoded_mentions_, candidate_idxs_ = \
-                            self._process_candidates(candidate_offsets=candidate_offsets,
-                                                     supporting_doc=supporting_doc,
-                                                     tokens=tokens,
-                                                     offsets=offsets,
-                                                     corefs=corefs,
-                                                     embeddings=embeddings)
+                        (processed_candidates_, candidate_idxs_, encoded_mentions_,
+                         encoded_mention_idx) = self._process_candidates(
+                             candidate_offsets=candidate_offsets,
+                             supporting_doc=supporting_doc,
+                             tokens=tokens,
+                             offsets=offsets,
+                             corefs=corefs,
+                             embeddings=embeddings,
+                             candidate_idxs=candidate_idxs[partition][-1],
+                             encoded_mention_idx=encoded_mention_idx
+                            )
 
                         processed_candidates[partition][example_id].append(processed_candidates_)
+                        candidate_idxs[partition][-1] = candidate_idxs_
                         encoded_mentions[partition].extend(encoded_mentions_)
-                        candidate_idxs[partition].append(candidate_idxs_)
 
                     # Accumulate chunk sizes per training example
-                    encoded_mentions_split_sizes[partition].append(len(encoded_mentions_))
+                    encoded_mentions_split_sizes[partition].append(encoded_mention_idx)
 
                 encoded_mentions[partition] = torch.cat(encoded_mentions[partition])
                 encoded_mentions_split_sizes[partition] = \
@@ -166,7 +172,7 @@ class Preprocessor(object):
         return tokens, offsets, corefs, contextualized_embeddings
 
     def _process_candidates(self, candidate_offsets, supporting_doc, tokens, offsets, corefs,
-                            embeddings):
+                            embeddings, candidate_idxs, encoded_mention_idx=0):
         """Returns a three-tuple of processed candidates, encoded mentions and candidate indices.
 
         Returns a three-tuple of processed candidates, encoded mentions and candidate indices:
@@ -197,8 +203,6 @@ class Preprocessor(object):
         """
         processed_candidates = []
         encoded_mentions = []
-        encoded_mention_idx = 0
-        candidate_idxs = {}
 
         def _process_mention(start, end):
             # Get character offsets for a given mention
@@ -218,7 +222,7 @@ class Preprocessor(object):
 
             return mention_text, mention_corefs, encoded_mention
 
-        def _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx=0):
+        def _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx):
             if mention_text in candidate_idxs:
                 candidate_idxs[mention_text].append(encoded_mention_idx)
             else:
@@ -258,7 +262,7 @@ class Preprocessor(object):
                     candidate_idxs, encoded_mention_idx = \
                         _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx)
 
-        return processed_candidates, encoded_mentions, candidate_idxs
+        return processed_candidates, candidate_idxs, encoded_mentions, encoded_mention_idx
 
     def _find_candidates(self, candidates, supporting_doc):
         """Finds all non-overlapping matches of `candidates` in `supporting_doc`.
