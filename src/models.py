@@ -164,13 +164,6 @@ class TransformerGCNQA(nn.Module):
         self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
         # layers of the model
-        '''
-        self.mention_encoder = torch.nn.LSTM(input_size=768,
-                                             hidden_size=384,
-                                             num_layers=1,
-                                             dropout=0.3,
-                                             bidirectional=True)
-        '''
         self.fc_1 = nn.Linear(1536, 512)
 
         # Instantiate R-GCN layers
@@ -215,34 +208,6 @@ class TransformerGCNQA(nn.Module):
         query_encoding = query_encoding.squeeze(0)[0, :]
 
         return query_encoding
-
-    # TODO (John): This will likely be removed unless we return to BiLSTM encoders
-    '''
-    def encode_mentions(self, x):
-        """Encodes a mention embedding (`x`) using the mention encoder (`self.mention_encoder`).
-
-        Pushes mention embeddings (`x`) through a BiLSTM, (`self.mention_encoder`). The final hidden
-        states of the forward and backward layers are concatenated to produce the encoded mentions.
-
-        Args:
-            x (torch.Tensor): Tensor of shape (seq_len, num_mentions, input_size) containing the
-                BERT embeddings for mentions (`x`).
-        Returns:
-            A vector of size (num_mentions, 2 * `self.query_encoder.hidden_size`) containing the
-            encoded mentions.
-        """
-        # hn is of shape (num_layers * directions, batch_size, hidden_size)
-        _, (hn, _) = self.mention_encoder(x)
-
-        # Extract the final forward/backward hidden states
-        final_forward_hidden_state, final_backward_hidden_state = \
-            self._get_forward_backward_hidden_states(hn,
-                                                     self.mention_encoder,
-                                                     batch_size=x.shape[1])
-
-        # Concat final forward/backward hidden states yields (1, 2 * hidden_size) encoded mentions
-        return torch.cat((final_forward_hidden_state, final_backward_hidden_state), dim=-1)
-    '''
 
     def encode_query_aware_mentions(self, encoded_query, encoded_mentions):
         """Returns the query aware mention encodings.
@@ -300,22 +265,3 @@ class TransformerGCNQA(nn.Module):
 
         out = self.out(x)  # N x 1
         return out
-
-    # TODO (John): This will likely be removed unless we return to BiLSTM encoders
-    '''
-    def _get_forward_backward_hidden_states(self, hn, lstm, batch_size):
-        """Helper function that returns the final forward/backward hidden states from `hn` given the
-        LSTM that produced them (`lstm`).
-        """
-        # Reshape it in order to be able to extract final forward/backward hidden states
-        num_layers = lstm.num_layers
-        num_directions = 2 if lstm.bidirectional else 1
-        hidden_size = lstm.hidden_size
-
-        hn = hn.view(num_layers, num_directions, batch_size, hidden_size)
-
-        final_forward_hidden_state = hn[-1, 0, :, :]
-        final_backward_hidden_state = hn[-1, -1, :, :]
-
-        return final_forward_hidden_state, final_backward_hidden_state
-    '''
