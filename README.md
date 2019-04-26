@@ -7,24 +7,28 @@ A Q/A architecture based on transformers and GCNs.
 
 ## Installation
 
-It is highly recommended that you first create a virtual environment. For example, using `conda`
+This package requires `python>=3.7` (as we depend on `dict` to retain insertion order) and CUDA 10.0. There are serveral dependencies not in the `setup.py` that you will need to install before installing this package. 
+
+First, it is highly recommended that you create a virtual environment. For example, using `conda`
 
 ```
-$ conda create -n transformer-gcn-qa python=3 -y
+$ conda create -n transformer-gcn-qa python=3.7 -y
 $ conda activate transformer-gcn-qa
 # Notice, the prompt has changed to indicate that the enviornment is active
 (transformer-gcn-qa) $ 
 ```
 
-Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
+You will then need to install CUDA 10.0 by following the [installation instructions](https://docs.nvidia.com/cuda/index.html#installation-guides) for your system. CUDA 10.0 can be downloaded from [here](https://developer.nvidia.com/cuda-10.0-download-archive).
+
+With CUDA 10.0 installed, follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
 (transformer-gcn-qa) $ conda install pytorch torchvision cudatoolkit=10.0 -c pytorch
 ```
 
-The R-GCN implementation is from [pytorch-geometric](https://github.com/rusty1s/pytorch_geometric). Setup involves ensuring various system variables are set followed by `pip` installing a number of packages. Comprehensive installation instructions can be found [here](https://rusty1s.github.io/pytorch_geometric/build/html/notes/installation.html).
+The R-GCN implementation is from [pytorch-geometric](https://github.com/rusty1s/pytorch_geometric). Installation involves ensuring various system variables are set followed by `pip` installing a number of packages. Comprehensive installation instructions can be found [here](https://rusty1s.github.io/pytorch_geometric/build/html/notes/installation.html).
 
-Finally, install this package and its dependencies straight from GitHub
+Finally, install this package and its remaining dependencies straight from GitHub
 
 ```
 (transformer-gcn-qa) $ pip install git+https://github.com/berc-uoft/Transformer-GCN-QA.git
