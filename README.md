@@ -16,13 +16,6 @@ $ conda activate transformer-gcn-qa
 (transformer-gcn-qa) $ 
 ```
 
-Next, download the [SpaCy](https://spacy.io/) english language model.
-
-```
-(transformer-gcn-qa) $ pip install spacy
-(transformer-gcn-qa) $ python -m spacy download en_core_web_md
-```
-
 Then follow the instructions [here](https://pytorch.org/get-started/locally/) to install PyTorch for your system. It is highly recommended that you use a GPU to train the model (or preprocess Wiki- or MedHop) so make sure to install CUDA support. For example, using `conda` and installing for Linux or Windows with CUDA 10.0
 
 ```
@@ -31,7 +24,7 @@ Then follow the instructions [here](https://pytorch.org/get-started/locally/) to
 
 The R-GCN implementation is from [pytorch-geometric](https://github.com/rusty1s/pytorch_geometric). Setup involves ensuring various system variables are set followed by `pip` installing a number of packages. Comprehensive installation instructions can be found [here](https://rusty1s.github.io/pytorch_geometric/build/html/notes/installation.html).
 
-Finally, install this package straight from GitHub
+Finally, install this package and its dependencies straight from GitHub
 
 ```
 (transformer-gcn-qa) $ pip install git+https://github.com/berc-uoft/Transformer-GCN-QA.git
