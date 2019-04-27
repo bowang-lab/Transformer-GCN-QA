@@ -4,12 +4,12 @@ import torch
 from tqdm import tqdm
 
 
-class BuildGraph():
+class GraphBuilder():
     """TODO (Duncan)
 
     Attributes:
     """
-    
+
     def __init__(self, samples):
         """Given the preprocessed training dictionary obtained from preprocessor.py,
         constructs a heuristic graph for each training example.
@@ -29,22 +29,23 @@ class BuildGraph():
                 type of the edge (an integer in [0, 1, 2, 3]). The edges and
                 corresponding relation types for each graph are concatenated in
                 the second dimension to ensure a single tensor can be saved for
-                all samples. 
-                    
-            idxs (dict): A dictionary containing sample ids as keys and
+                all samples.
+
+            graph_split_sizes (list): A dictionary containing sample ids as keys and
                 corresponding graph tensor sizes as values. This allows the
                 correct subtensor corresponding to the given sample from `graphs`
                 to be extracted during training or inference time by using
                 `torch.split()`.
         """
-
         self._make_names()
 
         graphs = []
-        idxs = {}
+        graph_split_sizes = []
 
         # Iterate over each training example and build the graph.
         for sample_key, sample in tqdm(self.samples.items()):
+            # We only need mention information to build the graph
+            sample = sample['mention']
 
             # Build graphs.
             doc_based_edges = self._build_doc_based(sample)
@@ -65,15 +66,15 @@ class BuildGraph():
                                                   coref_edges +
                                                   comp_edges))
 
-            graph = torch.cat((edge_index, rels.reshape(1, -1)))
+            graph = torch.cat((edge_index, rels.g(1, -1)))
             graphs.append(graph)
 
-            idxs[sample_key] = graph.shape[1]
+            graph_split_sizes.append(graph.shape[1])
 
         # Concatenate graphs into one large tensor.
         graphs = torch.cat(graphs, dim=-1)
 
-        return graphs, idxs
+        return graphs, graph_split_sizes
 
     def _make_names(self):
         """Adds unique indices to each mention for each sample in `self.samples`.
