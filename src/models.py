@@ -176,7 +176,7 @@ class TransformerGCNQA(nn.Module):
             self.add_module('RGCN_{}'.format(i), layer)
 
         # Final affine transform
-        self.out = nn.Linear(self.rgcn_size + 768, 1)
+        self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
 
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
@@ -237,13 +237,25 @@ class TransformerGCNQA(nn.Module):
 
         return query_aware_mention_encoding
 
-    def forward(self, query, encoded_mention, graph):
+    def forward(self, query, candidate_indices, encoded_mention, graph, target=None):
         """Hook for the forward pass of the model.
 
         Args:
             query (str): A string representing the input query from Wiki- or MedHop.
-            encoded_mentions (torch.Tensor): A tensor of encoded mentions, of shape
-                (num of encoded mentions x 768).
+            candidate_indices (dict): A dictionary containing candidate as key and list of candidate
+                mention indices as values. These indices identify which rows of `encoded_mentions`
+                correspond to mention embeddings of the given candidate.
+            encoded_mentions (torch.Tensor): A tensor of encoded mentions, of shape (num of encoded
+                mentions x 768).
+            graph (torch.Tensor): A 3 x N tensor of graph edges in coordinate format (rows 1 and 2)
+                and edge types (row 3).
+            target (torch.Tensor): One-hot encoding of the candidate corresponding to the correct
+                answer.
+
+        Returns:
+            If target is not None, returns a single scalar representing the cross-entropy loss.
+            Othewrise, returns a masked softmax prediction over all candidates in
+            `candidate_indices`.
         """
         encoded_query = self.encode_query(query)
 
@@ -267,6 +279,19 @@ class TransformerGCNQA(nn.Module):
         # Concatenate summed R-GCN output with query
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
 
-        out = self.out(x_query_cat)  # N x 1
+        logits = self.fc_logits(x_query_cat)  # N x 1
 
-        return out
+        # Compute the masked softmax based on available candidates
+        masked_softmax = torch.zeros(len(candidate_indices))
+        for i, idxs in enumerate(candidate_indices.values()):
+            logits_masked_max = torch.max(logits[idxs])
+            masked_softmax[i] = torch.exp(logits_masked_max)
+        masked_softmax /= torch.sum(masked_softmax)
+
+        # If target is provided compute loss, otherwise return `masked_softmax`
+        if target is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), target.view(-1))
+            return loss
+        else:
+            return masked_softmax
