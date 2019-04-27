@@ -44,8 +44,8 @@ class GraphBuilder():
 
         # Iterate over each training example and build the graph.
         for sample_key, sample in tqdm(self.samples.items()):
-            # We only need mention information to build the graph
-            sample = sample['mention']
+            # Only need mention information to build the graph
+            sample = sample['mentions']
 
             # Build graphs.
             doc_based_edges = self._build_doc_based(sample)
@@ -66,7 +66,7 @@ class GraphBuilder():
                                                   coref_edges +
                                                   comp_edges))
 
-            graph = torch.cat((edge_index, rels.g(1, -1)))
+            graph = torch.cat((edge_index, rels.reshape(1, -1)))
             graphs.append(graph)
 
             graph_split_sizes.append(graph.shape[1])
@@ -79,13 +79,14 @@ class GraphBuilder():
     def _make_names(self):
         """Adds unique indices to each mention for each sample in `self.samples`.
         """
-
         for _, sample in self.samples.items():
             idx = 0
 
-            for doc in sample:
+            sample = sample['mentions']
 
+            for doc in sample:
                 for mention in doc:
+
                     mention['id'] = idx
 
                     for coref in mention['corefs']:
@@ -98,7 +99,6 @@ class GraphBuilder():
     def _make_undirected(self, edge_list):
         """Takes an edge-list and adds to it edges in the reverse direction.
         """
-
         rev_edge_list = [(edge[1], edge[0]) for edge in edge_list]
         new_edge_list = edge_list + rev_edge_list
 
@@ -107,7 +107,6 @@ class GraphBuilder():
     def _build_doc_based(self, sample):
         """Creates an edge-list containing all within-document relationships.
         """
-
         edge_list = []  # List of edge tuples (id_i, id_j)
 
         for doc in sample:
@@ -122,7 +121,6 @@ class GraphBuilder():
     def _build_match(self, sample):
         """Creates an edge-list containing all mention matches.
         """
-
         edge_list = []
 
         checked = set()  # Track IDs that have already had edges added.
@@ -139,7 +137,7 @@ class GraphBuilder():
         # Check for case-insensitive matches.
         for mention in flat:
             mention_id = mention['id']
-            mention_str = mention['mention'].lower()
+            mention_str = mention['text'].lower()
             if mention_str in checked:
                 continue
             checked.add(mention_str)
@@ -148,7 +146,7 @@ class GraphBuilder():
                 mention2_id = mention2['id']
                 if mention_id == mention2_id:  # Avoid self-loops
                     continue
-                mention2_str = mention2['mention'].lower()
+                mention2_str = mention2['text'].lower()
                 if mention_str == mention2_str:  # Positive match
                     edge_list.append((mention_id, mention2_id))
 
@@ -157,7 +155,6 @@ class GraphBuilder():
     def _build_coref(self, sample):
         """Creates an edge-list containing all coref mentions.
         """
-
         edge_list = []
 
         for doc in sample:
@@ -174,7 +171,6 @@ class GraphBuilder():
         'all_edges' corresponds to an edge list containing all edges
         across all relation types found in the above functions.
         """
-
         # First get all possible ID pairs.
         all_ids = [mention['id'] for mention in self.flat]
         all_pairs = self._make_undirected(list(combinations(all_ids, 2)))

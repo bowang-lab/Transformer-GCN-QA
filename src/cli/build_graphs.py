@@ -1,4 +1,5 @@
 import argparse
+from glob import glob
 import json
 import os
 
@@ -22,30 +23,28 @@ def main(input_directory):
     Args:
         input_directory (str): Path to the preprocessed Wiki- or MedHop dataset.
     """
-    for _, partitions, _ in os.walk(input_directory):
-        for partition in partitions:
-            # This is a directory in input_directory corresponding to a dataset partition
-            output_directory = os.path.join(input_directory, partition)
+    partitions = glob(os.path.join(input_directory, '*'))
 
-            # Load the only file we need for graph building
-            processed_dataset_filepath = os.path.join(input_directory, partition,
-                                                      'processed_dataset.json')
+    for partition_filepath in partitions:
 
-            with open(processed_dataset_filepath, 'r') as f:
-                processed_dataset = json.load(f)
+        # Load the only file we need for graph building
+        processed_dataset_filepath = os.path.join(partition_filepath, 'processed_dataset.json')
 
-            # Build the graphs
-            graph_builder = GraphBuilder(processed_dataset)
-            graphs, graph_split_sizes = graph_builder.build()
+        with open(processed_dataset_filepath, 'r') as f:
+            processed_dataset = json.load(f)
 
-            # Save graphs and their chunk sizes
-            graphs_filepath = os.path.join(output_directory, 'graphs.pt')
-            graph_split_sizes_filepath = os.path.join(output_directory, 'graph_split_sizes.json')
+        # Build the graphs
+        graph_builder = GraphBuilder(processed_dataset)
+        graphs, graph_split_sizes = graph_builder.build()
 
-            torch.save(graphs, graphs_filepath)
+        # Save graphs and their chunk sizes
+        graphs_filepath = os.path.join(partition_filepath, 'graphs.pt')
+        graph_split_sizes_filepath = os.path.join(partition_filepath, 'graph_split_sizes.json')
 
-            with open(graph_split_sizes_filepath, 'w') as f:
-                json.dump(graph_split_sizes, f, indent=2)
+        torch.save(graphs, graphs_filepath)
+
+        with open(graph_split_sizes_filepath, 'w') as f:
+            json.dump(graph_split_sizes, f, indent=2)
 
 
 if __name__ == '__main__':
