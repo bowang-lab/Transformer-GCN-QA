@@ -9,7 +9,7 @@ from .models import TransformerGCNQA
 
 
 def main(input_directory):
-    """
+    """Runs a training loop for the `TransformerGCNQA` model.
     """
     # Define our model
     model = TransformerGCNQA()
@@ -27,7 +27,7 @@ def main(input_directory):
         dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
 
     # Train the model
-    train(model, dataloaders)
+    train(model, processed_dataset, dataloaders)
 
 
 if __name__ == '__main__':

@@ -5,9 +5,9 @@ import tqdm
 def get_device(model=None):
     """Returns two-tuple containing a PyTorch device (CPU or GPU(s)), and number of available GPUs.
 
-    Returns a two-tuple containing a  PyTorch device (CPU or GPU(s)) and number of available CUDA 
-    devices. If `model` is not None, and a CUDA device is available, the model is placed on the 
-    CUDA device with `model.to(device)`. If multiple GPUs are available, the model is parallized 
+    Returns a two-tuple containing a  PyTorch device (CPU or GPU(s)) and number of available CUDA
+    devices. If `model` is not None, and a CUDA device is available, the model is placed on the
+    CUDA device with `model.to(device)`. If multiple GPUs are available, the model is parallized
     with `torch.nn.DataParallel(model)`.
 
     Args:
@@ -40,7 +40,7 @@ def get_device(model=None):
 
 # TODO: This code only computes the loss, and does not currently return a prediction
 def train(model, processed_dataset, dataloaders, epochs=20):
-    """
+    """Trains an instance of `model`.
     """
     device, n_gpus = get_device(model)
 
@@ -53,7 +53,7 @@ def train(model, processed_dataset, dataloaders, epochs=20):
         nb_train_steps = 0
 
         pbar_descr = 'Epoch: {}/{}'.format(epoch, epochs)
-        pbar_train = tqdm(dataloaders['dev'], unit='batch', desc=pbar_descr)
+        pbar_train = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
 
         for _, batch in enumerate(pbar_train):
 
@@ -92,7 +92,6 @@ def train(model, processed_dataset, dataloaders, epochs=20):
             eval_loss = 0
             nb_eval_steps = 0
 
-            pbar_descr = 'Epoch: {}/{}'.format(epoch, epochs)
             pbar_eval = tqdm(dataloaders['dev'], unit='batch', desc=pbar_descr)
 
             with torch.no_grad():

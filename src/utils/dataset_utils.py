@@ -36,7 +36,7 @@ def load_wikihop(directory, load_masked=False):
         filepath = os.path.join(directory, filename)
 
         if filename.endswith('.json'):
-            # only load masked partitions if `load_masked` is True
+            # Only load masked partitions if `load_masked` is True
             if 'masked' not in partition or load_masked:
                 with open(filepath, 'r') as f:
                     dataset[partition] = json.loads(f.read())
