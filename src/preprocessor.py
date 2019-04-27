@@ -62,34 +62,41 @@ class Preprocessor(object):
             A 5-tuple of dictionaries, keyed by partition, containing everything we need for graph
             construction and training.
         """
-        processed_candidates = {}
+        processed_dataset = {}
         encoded_mentions = {}
         encoded_mentions_split_sizes = {}
-        candidate_idxs = {}
         targets = {}
+        targets_mentions_split_sizes = {}
 
         for partition, training_examples in dataset.items():
             if training_examples:
                 print("Processing partition: '{}'...".format(partition))
 
-                processed_candidates[partition] = {}
+                processed_dataset[partition] = {}
+
                 encoded_mentions[partition] = []
                 encoded_mentions_split_sizes[partition] = []
-                candidate_idxs[partition] = []
                 targets[partition] = []
+                targets_mentions_split_sizes[partition] = []
 
                 for example in tqdm(training_examples):
 
                     example_id = example['id']
-                    candidates = example['candidates']
+                    query = example['query']
                     answer = example['answer']
+                    candidates = example['candidates']
 
-                    # One-hot encode answer and accumulate
-                    one_hot = [1 if candidate == answer else 0 for candidate in candidates]
-                    targets[partition].append(one_hot)
+                    processed_dataset[partition][example_id] = {
+                        'mentions': [],
+                        'query': query,
+                        'candidate_indices': {},
+                    }
 
-                    processed_candidates[partition][example_id] = []
-                    candidate_idxs[partition].append({})
+                    # One-hot encoding of answer
+                    target = [1 if candidate == answer else 0 for candidate in candidates]
+                    targets[partition].append(torch.tensor(target))
+                    targets_mentions_split_sizes[partition].append(len(target))
+
                     # Keeps track of the mentions index in encoded_mentions
                     encoded_mention_idx = 0
 
@@ -102,7 +109,7 @@ class Preprocessor(object):
                         candidate_offsets = self._find_candidates(candidates, supporting_doc)
 
                         # Returns the final data structures for mentions and their encodings
-                        (processed_candidates_, candidate_idxs_, encoded_mentions_,
+                        (processed_candidates, candidate_idxs, encoded_mentions_,
                          encoded_mention_idx) = self._process_candidates(
                              candidate_offsets=candidate_offsets,
                              supporting_doc=supporting_doc,
@@ -110,23 +117,25 @@ class Preprocessor(object):
                              offsets=offsets,
                              corefs=corefs,
                              embeddings=embeddings,
-                             candidate_idxs=candidate_idxs[partition][-1],
+                             candidate_idxs=processed_dataset[partition][example_id]['candidate_indices'],
                              encoded_mention_idx=encoded_mention_idx
                             )
 
-                        processed_candidates[partition][example_id].append(processed_candidates_)
-                        candidate_idxs[partition][-1] = candidate_idxs_
+                        processed_dataset[partition][example_id]['mentions'].append(
+                            processed_candidates
+                        )
+                        processed_dataset[partition][example_id]['candidate_indices'] = \
+                            candidate_idxs
                         encoded_mentions[partition].extend(encoded_mentions_)
 
                     # Accumulate chunk sizes per training example
                     encoded_mentions_split_sizes[partition].append(encoded_mention_idx)
 
                 encoded_mentions[partition] = torch.cat(encoded_mentions[partition])
-                encoded_mentions_split_sizes[partition] = \
-                    torch.tensor(encoded_mentions_split_sizes[partition])
+                targets[partition] = torch.cat(targets[partition])
 
-        return (processed_candidates, encoded_mentions, encoded_mentions_split_sizes,
-                candidate_idxs, targets)
+        return (processed_dataset, encoded_mentions, encoded_mentions_split_sizes, targets,
+                targets_mentions_split_sizes)
 
     def _process_doc(self, doc, model):
         """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and the
@@ -244,7 +253,7 @@ class Preprocessor(object):
                 # Gets the mentions text, its corefs, and updates encoded_mentions
                 mention_text, mention_corefs, encoded_mention = \
                     _process_mention(mention_start[0], mention_end[0])
-                processed_candidates.append({'mention': mention_text, 'corefs': []})
+                processed_candidates.append({'text': mention_text, 'corefs': []})
                 encoded_mentions.append(encoded_mention)
 
                 # Maintains a mapping from candidates to their position in encoded_mentions
@@ -257,7 +266,7 @@ class Preprocessor(object):
                     end = [i for i, offset in enumerate(offsets) if offset[-1] == coref_end][0]
 
                     coref_text, _, encoded_mention = _process_mention(start, end)
-                    processed_candidates[-1]['corefs'].append({'mention': coref_text})
+                    processed_candidates[-1]['corefs'].append({'text': coref_text})
                     encoded_mentions.append(encoded_mention)
 
                     candidate_idxs, encoded_mention_idx = \

@@ -1,18 +1,22 @@
 import json
 import os
+from glob import glob
+
+import torch
 
 # TODO (John): Rewrite this to use googledrivedownloader
 
-def load_wikihop(directory, load_masked=False):
-    """Loads the WikiHop or MedHop dataset given at `directory`.
 
-    Loads the WikiHop or MedHop dataset given at `directory` and returns a dictionary keyed by
+def load_wikihop(directory, load_masked=False):
+    """Loads the Wiki- or MedHop dataset given at `directory`.
+
+    Loads the Wiki- or MedHop dataset given at `directory` and returns a dictionary keyed by
     partition names: 'train', 'dev', 'train.masked', 'dev.masked'. If `load_masked`, the masked
     partitions of the dataset are loaded, otherwise, 'train.masked' and 'dev.masked' in the returned
     dictionary are None.
 
     Args:
-        directory (str): Directory path to the WikiHop or MedHop datasets.
+        directory (str): Directory path to the Wiki- or MedHop datasets.
         load_masked (bool): True if the 'train.masked' and 'dev.masked' partitions of the dataset
             should be loaded. Defaults to False.
 
@@ -38,3 +42,62 @@ def load_wikihop(directory, load_masked=False):
                     dataset[partition] = json.loads(f.read())
 
     return dataset
+
+
+def load_preprocessed_wikihop(directory):
+    """Loads a preprocessed Wiki- or MedHop dataset given at `directory`.
+
+    Loads the preprocessed Wiki- or MedHop dataset given at `directory` and returns 4 dictionaries
+    keyed by partition names, e.g. 'train', 'dev', 'train.masked', 'dev.masked', containing to
+    the `processed_dataset`, the `encoded_mentions`, `graphs` and `targets`.
+
+    TODO (John): Breakdown of what each dictionary contains.
+
+    Args:
+        directory (str): Directory path to the preprocessed Wiki- or MedHop datasets.
+
+    Returns:
+        Four dictionaries, keyed by dataset partitions, containing everything we need to train the
+        model.
+    """
+    processed_dataset = {}
+    encoded_mentions = {}
+    # TODO: Uncomment when os.walk issue is fixed
+    # graphs = {}
+    targets = {}
+
+    partitions = glob(os.path.join(directory, '*'))
+
+    for partition_filepath in partitions:
+
+        partition = os.path.basename(partition_filepath)
+
+        processed_dataset_filepath = os.path.join(partition_filepath, 'processed_dataset.json')
+        encoded_mentions_filepath = os.path.join(partition_filepath, 'encoded_mentions.pt')
+        encoded_mentions_split_sizes_filepath = os.path.join(partition_filepath,
+                                                             'encoded_mentions_split_sizes.json')
+        # TODO: Uncomment when os.walk issue is fixed
+        # graphs_filepath = os.path.join(partition, 'graphs.pt')
+        # graph_split_sizes_filepath = os.path.join(partition, 'graph_split_sizes.json')
+        targets_filepath = os.path.join(partition_filepath, 'targets.pt')
+        targets_split_sizes_filepath = os.path.join(partition_filepath, 'targets_split_sizes.json')
+
+        # Load .json files
+        with open(processed_dataset_filepath, 'r') as f:
+            processed_dataset[partition] = json.load(f)
+        with open(encoded_mentions_split_sizes_filepath, 'r') as f:
+            encoded_mentions_split_sizes = json.load(f)
+        # TODO: Uncomment when os.walk issue is fixed
+        # with open(graph_split_sizes_filepath, 'r') as f:
+        #     graph_split_sizes = json.load(f)
+        with open(targets_split_sizes_filepath, 'r') as f:
+            targets_split_sizes = json.load(f)
+
+        encoded_mentions[partition] = \
+            torch.split(torch.load(encoded_mentions_filepath), encoded_mentions_split_sizes)
+        # TODO: Uncomment when os.walk issue is fixed
+        # graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes)
+        targets[partition] = torch.split(torch.load(targets_filepath), targets_split_sizes)
+
+    # TODO: Replace none with `graphs` when os.walk issue is fixed
+    return processed_dataset, encoded_mentions, None, targets
