@@ -39,7 +39,7 @@ def get_device(model=None):
 
 
 # TODO: This code only computes the loss, and does not currently return a prediction
-def train(model, processed_dataset, dataloaders, epochs=20):
+def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
     """Trains an instance of `model`.
     """
     device, n_gpus = get_device(model)

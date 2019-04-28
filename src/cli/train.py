@@ -1,11 +1,12 @@
 import argparse
 
 from torch.utils import data
+from torch.optim import Adam
 
-from .dataset import Dataset
-from .utils.dataset_utils import load_preprocessed_wikihop
-from .utils.model_utils import train
-from .models import TransformerGCNQA
+from ..dataset import Dataset
+from ..utils.dataset_utils import load_preprocessed_wikihop
+from ..utils.model_utils import train
+from ..models import TransformerGCNQA
 
 
 def main(input_directory):
@@ -13,6 +14,9 @@ def main(input_directory):
     """
     # Define our model
     model = TransformerGCNQA()
+
+    # Define our optimizer
+    optimizer = Adam(model.parameters())
 
     # Load preprocessed dataset
     processed_dataset, encoded_mentions, graphs, targets = \
@@ -27,7 +31,7 @@ def main(input_directory):
         dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
 
     # Train the model
-    train(model, processed_dataset, dataloaders)
+    train(model, optimizer, processed_dataset, dataloaders)
 
 
 if __name__ == '__main__':
