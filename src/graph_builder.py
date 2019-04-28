@@ -63,9 +63,9 @@ class GraphBuilder():
 
             # Create a coordinate tensor to store edges
             edge_index = torch.LongTensor(doc_based_edges +
-                                                  match_edges +
-                                                  coref_edges +
-                                                  comp_edges))
+                                          match_edges +
+                                          coref_edges +
+                                          comp_edges)
             # Check if graph is empty
             if len(edge_index) == 0:
                 warnings.warn('Empty graph encountered in sample {}.'.format(sample_key))
