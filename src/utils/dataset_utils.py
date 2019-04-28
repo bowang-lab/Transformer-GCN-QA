@@ -62,8 +62,7 @@ def load_preprocessed_wikihop(directory):
     """
     processed_dataset = {}
     encoded_mentions = {}
-    # TODO: Uncomment when os.walk issue is fixed
-    # graphs = {}
+    graphs = {}
     targets = {}
 
     partitions = glob(os.path.join(directory, '*'))
@@ -76,9 +75,8 @@ def load_preprocessed_wikihop(directory):
         encoded_mentions_filepath = os.path.join(partition_filepath, 'encoded_mentions.pt')
         encoded_mentions_split_sizes_filepath = os.path.join(partition_filepath,
                                                              'encoded_mentions_split_sizes.json')
-        # TODO: Uncomment when os.walk issue is fixed
-        # graphs_filepath = os.path.join(partition, 'graphs.pt')
-        # graph_split_sizes_filepath = os.path.join(partition, 'graph_split_sizes.json')
+        graphs_filepath = os.path.join(partition_filepath, 'graphs.pt')
+        graph_split_sizes_filepath = os.path.join(partition_filepath, 'graph_split_sizes.json')
         targets_filepath = os.path.join(partition_filepath, 'targets.pt')
         targets_split_sizes_filepath = os.path.join(partition_filepath, 'targets_split_sizes.json')
 
@@ -87,17 +85,14 @@ def load_preprocessed_wikihop(directory):
             processed_dataset[partition] = json.load(f)
         with open(encoded_mentions_split_sizes_filepath, 'r') as f:
             encoded_mentions_split_sizes = json.load(f)
-        # TODO: Uncomment when os.walk issue is fixed
-        # with open(graph_split_sizes_filepath, 'r') as f:
-        #     graph_split_sizes = json.load(f)
+        with open(graph_split_sizes_filepath, 'r') as f:
+            graph_split_sizes = json.load(f)
         with open(targets_split_sizes_filepath, 'r') as f:
             targets_split_sizes = json.load(f)
 
         encoded_mentions[partition] = \
             torch.split(torch.load(encoded_mentions_filepath), encoded_mentions_split_sizes)
-        # TODO: Uncomment when os.walk issue is fixed
-        # graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes)
+        graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes)
         targets[partition] = torch.split(torch.load(targets_filepath), targets_split_sizes)
 
-    # TODO: Replace none with `graphs` when os.walk issue is fixed
-    return processed_dataset, encoded_mentions, None, targets
+    return processed_dataset, encoded_mentions, graphs, targets
