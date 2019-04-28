@@ -148,7 +148,7 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, batch_size=1, n_rgcn_layers=7, rgcn_size=768, n_rgcn_bases=10, nlp=None):
+    def __init__(self, batch_size=1, n_rgcn_layers=3, rgcn_size=512, n_rgcn_bases=5, nlp=None):
         super().__init__()
 
         # an object for processing natural language
@@ -156,6 +156,8 @@ class TransformerGCNQA(nn.Module):
 
         # BERT instance associated with this model
         self.bert = BERT()
+
+        self.device, self.n_gpus = model_utils.get_device()
 
         # hyperparameters of the model
         self.batch_size = batch_size
@@ -226,6 +228,7 @@ class TransformerGCNQA(nn.Module):
             each encoded mention and pushing the resulting tensor through a dense layer
             (`self.fc_1`).
         """
+        activation = nn.LeakyReLU()
         num_mentions = encoded_mentions.shape[0]
 
         concat_encodings = \
@@ -233,7 +236,7 @@ class TransformerGCNQA(nn.Module):
 
         # Push concatenated query and mention encodings through fc layer followed by leaky ReLU
         # activation to get our query_aware_mention_encoding
-        query_aware_mention_encoding = nn.LeakyReLU(self.fc_1(concat_encodings))
+        query_aware_mention_encoding = activation(self.fc(concat_encodings))
 
         return query_aware_mention_encoding
 
@@ -259,9 +262,7 @@ class TransformerGCNQA(nn.Module):
         """
         encoded_query = self.encode_query(query)
 
-        query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mention)
-
-        x = self.fc(query_aware_mentions)
+        x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
 
         # Separate `graph` into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
@@ -282,7 +283,7 @@ class TransformerGCNQA(nn.Module):
         logits = self.fc_logits(x_query_cat)  # N x 1
 
         # Compute the masked softmax based on available candidates
-        masked_softmax = torch.zeros(len(candidate_indices))
+        masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
             logits_masked_max = torch.max(logits[idxs])
             masked_softmax[i] = torch.exp(logits_masked_max)

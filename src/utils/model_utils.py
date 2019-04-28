@@ -1,5 +1,5 @@
 import torch
-import tqdm
+from tqdm import tqdm
 
 
 def get_device(model=None):
@@ -39,18 +39,21 @@ def get_device(model=None):
 
 
 # TODO: This code only computes the loss, and does not currently return a prediction
+# TODO: There is a lot of repeated code between train / dev loops. Encapsulate
 def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
     """Trains an instance of `model`.
     """
     device, n_gpus = get_device(model)
 
     # Cast to list so that we can index in
-    processed_dataset = list(processed_dataset.values())
+    train_processed_dataset = list(processed_dataset['train'].values())
+    if 'dev' in processed_dataset:
+        dev_processed_dataset = list(processed_dataset['dev'].values())
 
     for epoch in range(epochs):
         model.train()
         train_loss = 0
-        nb_train_steps = 0
+        num_train_loss = 0
 
         pbar_descr = 'Epoch: {}/{}'.format(epoch, epochs)
         pbar_train = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
@@ -62,8 +65,13 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
             batch = tuple(t.to(device) for t in batch)
             index, encoded_mentions, graph, target = batch
 
-            query = processed_dataset[index]['query']
-            candidate_indices = processed_dataset[index]['candidate_indices']
+            # TODO: This is kind of ugly, maybe the model itself should deal with the batch index?
+            encoded_mentions = encoded_mentions.squeeze(0)
+            graph = graph.squeeze(0)
+
+            index = index.item()
+            query = train_processed_dataset[index]['query']
+            candidate_indices = train_processed_dataset[index]['candidate_indices']
 
             loss = model(query, candidate_indices, encoded_mentions, graph, target)
             loss.backwards()
@@ -81,16 +89,16 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
 
             # Track train loss
             train_loss += loss.item()
-            nb_train_steps += 1
+            num_train_loss += 1
 
-            pbar_train.set_postfix(eval_loss=train_loss / nb_train_steps)
+            pbar_train.set_postfix(train=train_loss / num_train_loss)
 
         # Run a validation step at the end of each epoch IF user provided dev partition
         if 'dev' in dataloaders:
 
             model.eval()
             eval_loss = 0
-            nb_eval_steps = 0
+            num_eval_steps = 0
 
             pbar_eval = tqdm(dataloaders['dev'], unit='batch', desc=pbar_descr)
 
@@ -100,8 +108,14 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
                     batch = tuple(t.to(device) for t in batch)
                     index, encoded_mentions, graph, target = batch
 
-                    query = processed_dataset[index]['query']
-                    candidate_indices = processed_dataset[index]['candidate_indices']
+                    # TODO: This is kind of ugly, maybe the model itself should deal with the batch
+                    # index?
+                    encoded_mentions = encoded_mentions.squeeze(0)
+                    graph = graph.squeeze(0)
+
+                    index = index.item()
+                    query = dev_processed_dataset[index]['query']
+                    candidate_indices = dev_processed_dataset[index]['candidate_indices']
 
                     loss = model(query, candidate_indices, encoded_mentions, graph, target)
 
@@ -109,9 +123,9 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
                         loss = loss.mean()
 
                     eval_loss += loss.item()
-                    nb_eval_steps += 1
+                    num_eval_steps += 1
 
-                pbar_eval.set_postfix(eval_loss=eval_loss / nb_eval_steps)
+                pbar_eval.set_postfix(eval_loss=eval_loss / num_eval_steps)
 
         pbar_train.close()
         pbar_eval.close()

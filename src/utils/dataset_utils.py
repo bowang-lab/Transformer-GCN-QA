@@ -92,7 +92,7 @@ def load_preprocessed_wikihop(directory):
 
         encoded_mentions[partition] = \
             torch.split(torch.load(encoded_mentions_filepath), encoded_mentions_split_sizes)
-        graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes)
+        graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes, dim=-1)
         targets[partition] = torch.split(torch.load(targets_filepath), targets_split_sizes)
 
     return processed_dataset, encoded_mentions, graphs, targets
