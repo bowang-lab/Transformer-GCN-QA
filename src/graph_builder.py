@@ -1,3 +1,4 @@
+import warnings
 from itertools import combinations
 
 import torch
@@ -42,36 +43,41 @@ class GraphBuilder():
         graphs = []
         graph_split_sizes = []
 
-        # Iterate over each training example and build the graph.
+        # Iterate over each training example and build the graph
         for sample_key, sample in tqdm(self.samples.items()):
             # Only need mention information to build the graph
             sample = sample['mentions']
 
-            # Build graphs.
+            # Build graphs
             doc_based_edges = self._build_doc_based(sample)
             match_edges = self._build_match(sample)
             coref_edges = self._build_coref(sample)
             all_edges = doc_based_edges + match_edges + coref_edges
             comp_edges = self._build_complement(sample, all_edges)
 
-            # Create tensor for each edge specifying relation type.
+            # Create tensor for each edge specifying relation type
             rels = torch.LongTensor([0 for _ in range(len(doc_based_edges))] +
                                     [1 for _ in range(len(match_edges))] +
                                     [2 for _ in range(len(coref_edges))] +
                                     [3 for _ in range(len(comp_edges))])
 
-            # Create a coordinate tensor to store edges.
-            edge_index = torch.t(torch.LongTensor(doc_based_edges +
-                                                  match_edges +
-                                                  coref_edges +
-                                                  comp_edges))
+            # Create a coordinate tensor to store edges
+            edge_index = torch.LongTensor(doc_based_edges +
+                                          match_edges +
+                                          coref_edges +
+                                          comp_edges)
+            # Check if graph is empty
+            if len(edge_index) == 0:
+                warnings.warn('Empty graph encountered in sample {}.'.format(sample_key))
+                graphs.append(edge_index)
+                graph_split_sizes.append(0)
+            else:
+                edge_index = torch.t(edge_index)
+                graph = torch.cat((edge_index, rels.reshape(1, -1)))
+                graphs.append(graph)
+                graph_split_sizes.append(graph.shape[1])
 
-            graph = torch.cat((edge_index, rels.reshape(1, -1)))
-            graphs.append(graph)
-
-            graph_split_sizes.append(graph.shape[1])
-
-        # Concatenate graphs into one large tensor.
+        # Concatenate graphs into one large tensor
         graphs = torch.cat(graphs, dim=-1)
 
         return graphs, graph_split_sizes
@@ -88,12 +94,10 @@ class GraphBuilder():
                 for mention in doc:
 
                     mention['id'] = idx
+                    idx += 1
 
                     for coref in mention['corefs']:
                         coref['id'] = idx
-                        idx += 1
-
-                    if len(mention['corefs']) == 0:
                         idx += 1
 
     def _make_undirected(self, edge_list):
@@ -123,9 +127,9 @@ class GraphBuilder():
         """
         edge_list = []
 
-        checked = set()  # Track IDs that have already had edges added.
+        checked = set()  # Track IDs that have already had edges added
 
-        # Get flattened representation of 'sample'.
+        # Get flattened representation of 'sample'
         flat = []
         for doc in sample:
             for mention in doc:
@@ -134,7 +138,7 @@ class GraphBuilder():
                     flat.append(coref)
         self.flat = flat
 
-        # Check for case-insensitive matches.
+        # Check for case-insensitive matches
         for mention in flat:
             mention_id = mention['id']
             mention_str = mention['text'].lower()
@@ -171,11 +175,11 @@ class GraphBuilder():
         'all_edges' corresponds to an edge list containing all edges
         across all relation types found in the above functions.
         """
-        # First get all possible ID pairs.
+        # First get all possible ID pairs
         all_ids = [mention['id'] for mention in self.flat]
         all_pairs = self._make_undirected(list(combinations(all_ids, 2)))
 
-        # Subtract 'all_edges' from 'all_pairs' to get complement edges.
+        # Subtract 'all_edges' from 'all_pairs' to get complement edges
         comp_edges = list(set(all_pairs) - set(all_edges))
 
         return comp_edges
