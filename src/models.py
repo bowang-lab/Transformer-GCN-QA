@@ -150,7 +150,7 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, rgcn_size=256, n_rgcn_bases=3):
+    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, rgcn_size=256, n_rgcn_bases=2):
         super().__init__()
         # TODO: The number of calls to this function is growing... can we call it once and pass
         # device around?
