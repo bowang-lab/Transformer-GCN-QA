@@ -150,7 +150,7 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, rgcn_size=256, n_rgcn_bases=2):
+    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, n_rels=4, rgcn_size=256, n_rgcn_bases=3):
         super().__init__()
         # TODO: The number of calls to this function is growing... can we call it once and pass
         # device around?
@@ -165,6 +165,7 @@ class TransformerGCNQA(nn.Module):
         # Hyperparameters of the model
         self.batch_size = batch_size
         self.n_rgcn_layers = n_rgcn_layers
+        self.n_rels = n_rels
         self.rgcn_size = rgcn_size
         self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
@@ -174,7 +175,7 @@ class TransformerGCNQA(nn.Module):
         # Instantiate R-GCN layers
         self.rgcn_layers = []
         for _ in range(self.n_rgcn_layers):
-            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, 4, self.n_rgcn_bases))
+            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases))
 
         # Add R-GCN layers to model
         for i, layer in enumerate(self.rgcn_layers):
