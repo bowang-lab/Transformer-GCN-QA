@@ -40,8 +40,14 @@ def get_device(model=None):
 
 # TODO: This code only computes the loss, and does not currently return a prediction
 # TODO: There is a lot of repeated code between train / dev loops. Encapsulate
-def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
+def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
     """Trains an instance of `model`.
+
+    Args:
+        model (): TODO.
+        optimzer (): TODO.
+        processed_dataset (): TODO.
+        dataloaders (): TODO.
     """
     device, n_gpus = get_device(model)
 
@@ -50,37 +56,38 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
     if 'dev' in processed_dataset:
         dev_processed_dataset = list(processed_dataset['dev'].values())
 
-    for epoch in range(epochs):
+    for epoch in range(kwargs['epochs']):
         model.train()
         train_loss = 0
         num_train_loss = 0
 
-        pbar_descr = 'Epoch: {}/{}'.format(epoch, epochs)
+        pbar_descr = 'Epoch: {}/{}'.format(epoch, kwargs['epochs'])
         pbar_train = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
 
         for _, batch in enumerate(pbar_train):
 
             model.zero_grad()
 
-            batch = tuple(t.to(device) for t in batch)
             index, encoded_mentions, graph, target = batch
+
+            index = index.item()
+            encoded_mentions = encoded_mentions.to(device)
+            graph = graph.to(device)
 
             # TODO: This is kind of ugly, maybe the model itself should deal with the batch index?
             encoded_mentions = encoded_mentions.squeeze(0)
             graph = graph.squeeze(0)
 
-            index = index.item()
             query = train_processed_dataset[index]['query']
             candidate_indices = train_processed_dataset[index]['candidate_indices']
 
             loss = model(query, candidate_indices, encoded_mentions, graph, target)
-            loss.backwards()
+            loss.backward()
 
             # Gradient clipping
             # torch.nn.utils.clip_grad_norm_(parameters=model.parameters(),
             #                                max_norm=grad_norm)
 
-            # TODO: Need to define the optimizer
             optimizer.step()
 
             # Loss object is a vector of size n_gpus, need to average if more than 1
@@ -105,15 +112,17 @@ def train(model, optimizer, processed_dataset, dataloaders, epochs=20):
             with torch.no_grad():
                 for _, batch in enumerate(pbar_eval):
 
-                    batch = tuple(t.to(device) for t in batch)
                     index, encoded_mentions, graph, target = batch
+
+                    index = index.item()
+                    encoded_mentions = encoded_mentions.to(device)
+                    graph = graph.to(device)
 
                     # TODO: This is kind of ugly, maybe the model itself should deal with the batch
                     # index?
                     encoded_mentions = encoded_mentions.squeeze(0)
                     graph = graph.squeeze(0)
 
-                    index = index.item()
                     query = dev_processed_dataset[index]['query']
                     candidate_indices = dev_processed_dataset[index]['candidate_indices']
 

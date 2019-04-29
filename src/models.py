@@ -3,8 +3,10 @@ import torch
 from pytorch_pretrained_bert import BertModel
 from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
+
 from torch_geometric.nn import RGCNConv
 
+from .utils.model_utils import get_device
 from .constants import CLS
 from .constants import PAD
 from .constants import PRETRAINED_BERT_MODELS
@@ -34,7 +36,7 @@ class BERT(object):
         self.model = BertModel.from_pretrained(pretrained_model)
 
         # Place the model on a CUDA device if avaliable
-        self.device, self.n_gpus = model_utils.get_device(self.model)
+        self.device, _ = model_utils.get_device(self.model)
 
     def predict_on_tokens(self, tokens, only_cls=False):
         """Uses `self.tokenizer` and `self.model` to run a prediction step on `tokens`.
@@ -148,18 +150,19 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, batch_size=1, n_rgcn_layers=3, rgcn_size=512, n_rgcn_bases=5, nlp=None):
+    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, rgcn_size=256, n_rgcn_bases=3):
         super().__init__()
+        # TODO: The number of calls to this function is growing... can we call it once and pass
+        # device around?
+        self.device, _ = get_device()
 
-        # an object for processing natural language
+        # An object for processing natural language
         self.nlp = nlp if nlp else spacy.load(SPACY_MODEL)
 
         # BERT instance associated with this model
         self.bert = BERT()
 
-        self.device, self.n_gpus = model_utils.get_device()
-
-        # hyperparameters of the model
+        # Hyperparameters of the model
         self.batch_size = batch_size
         self.n_rgcn_layers = n_rgcn_layers
         self.rgcn_size = rgcn_size
@@ -271,7 +274,7 @@ class TransformerGCNQA(nn.Module):
         rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
         for layer in self.rgcn_layers:
             x = layer(x, edge_index, edge_type)
-            # Can add NL activations here if we want
+            # TODO (Duncan): Can add NL activations here if we want
             rgcn_layer_outputs.append(x)
 
         # Sum outputs from each R-GCN layer
@@ -283,7 +286,7 @@ class TransformerGCNQA(nn.Module):
         logits = self.fc_logits(x_query_cat)  # N x 1
 
         # Compute the masked softmax based on available candidates
-        masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
+        masked_softmax = torch.zeros(len(candidate_indices))
         for i, idxs in enumerate(candidate_indices.values()):
             logits_masked_max = torch.max(logits[idxs])
             masked_softmax[i] = torch.exp(logits_masked_max)
@@ -292,7 +295,8 @@ class TransformerGCNQA(nn.Module):
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
             loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), target.view(-1))
+            _, class_index = torch.max(target, 1)
+            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), class_index)
             return loss
         else:
             return masked_softmax
