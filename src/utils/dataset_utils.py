@@ -3,6 +3,9 @@ import os
 from glob import glob
 
 import torch
+from torch.utils import data
+
+from ..dataset import Dataset
 
 # TODO (John): Rewrite this to use googledrivedownloader
 
@@ -96,3 +99,25 @@ def load_preprocessed_wikihop(directory):
         targets[partition] = torch.split(torch.load(targets_filepath), targets_split_sizes)
 
     return processed_dataset, encoded_mentions, graphs, targets
+
+
+def get_dataloaders(processed_dataset, encoded_mentions, graphs, targets):
+    """Gets dataloaders for given preprocessed Wiki- or MedHop dataset.
+
+    Args:
+        processed_dataset (dict): TODO, see above^!
+        encoded_mentions (dict): TODO, see above^!
+        graphs (dict): TODO, see above^!
+        targets (dict): TODO, see above^!
+
+    Returns:
+        A dictionary containing `DataLoader` objects for each partition in `processed_dataset`.
+    """
+    dataloaders = {}
+    for partition in processed_dataset:
+        shuffle = True if partition == 'train' else False
+
+        dataset = Dataset(encoded_mentions[partition], graphs[partition], targets[partition])
+        dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
+
+    return dataloaders
