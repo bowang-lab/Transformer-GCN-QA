@@ -18,7 +18,7 @@ class GraphBuilder():
         self.samples = samples
         self.flat = None  # Flattened current sample
 
-    def build(self, complement=True):
+    def build(self, complement=False):
         """Wrapper to call all graph building functions. Converts edge-lists
         to coorindate pytorch tensors with relation types.
 
@@ -56,13 +56,13 @@ class GraphBuilder():
             match_edges = self._build_match(sample)
             coref_edges = self._build_coref(sample)
 
-            edge_list = doc_based_edges +
-                        match_edges +
-                        coref_edges
+            edge_list = (doc_based_edges +
+                         match_edges +
+                         coref_edges)
 
-            rel_list = [0 for _ in range(len(doc_based_edges))] +
-                       [1 for _ in range(len(match_edges))] +
-                       [2 for _ in range(len(coref_edges))]
+            rel_list = ([0 for _ in range(len(doc_based_edges))] +
+                        [1 for _ in range(len(match_edges))] +
+                        [2 for _ in range(len(coref_edges))])
 
             if complement:
                 comp_edges = self._build_complement(sample, edge_list)

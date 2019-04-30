@@ -150,7 +150,7 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, n_rels=4, rgcn_size=256, n_rgcn_bases=3):
+    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, n_rels=3, rgcn_size=128, n_rgcn_bases=3):
         super().__init__()
         # TODO: The number of calls to this function is growing... can we call it once and pass
         # device around?
@@ -289,15 +289,17 @@ class TransformerGCNQA(nn.Module):
         # Compute the masked softmax based on available candidates
         masked_softmax = torch.zeros(len(candidate_indices))
         for i, idxs in enumerate(candidate_indices.values()):
-            logits_masked_max = torch.max(logits[idxs])
-            masked_softmax[i] = torch.exp(logits_masked_max)
+            # Don't compute a likelihood if no instances of candidate
+            if idxs:
+                logits_masked_max = torch.max(logits[idxs])
+                masked_softmax[i] = torch.exp(logits_masked_max)
         masked_softmax /= torch.sum(masked_softmax)
 
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
             loss_fct = nn.CrossEntropyLoss()
-            _, class_index = torch.max(target, 1)
+            class_index = torch.argmax(target, 1)
             loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), class_index)
-            return loss
+            return masked_softmax, loss
         else:
             return masked_softmax
