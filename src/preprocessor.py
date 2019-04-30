@@ -66,7 +66,7 @@ class Preprocessor(object):
         encoded_mentions = {}
         encoded_mentions_split_sizes = {}
         targets = {}
-        targets_mentions_split_sizes = {}
+        targets_split_sizes = {}
 
         for partition, training_examples in dataset.items():
             if training_examples:
@@ -77,7 +77,7 @@ class Preprocessor(object):
                 encoded_mentions[partition] = []
                 encoded_mentions_split_sizes[partition] = []
                 targets[partition] = []
-                targets_mentions_split_sizes[partition] = []
+                targets_split_sizes[partition] = []
 
                 for example in tqdm(training_examples):
 
@@ -89,13 +89,13 @@ class Preprocessor(object):
                     processed_dataset[partition][example_id] = {
                         'mentions': [],
                         'query': query,
-                        'candidate_indices': {},
+                        'candidate_indices': {candidate: [] for candidate in candidates},
                     }
 
                     # One-hot encoding of answer
                     target = [1 if candidate == answer else 0 for candidate in candidates]
                     targets[partition].append(torch.tensor(target))
-                    targets_mentions_split_sizes[partition].append(len(target))
+                    targets_split_sizes[partition].append(len(target))
 
                     # Keeps track of the mentions index in encoded_mentions
                     encoded_mention_idx = 0
@@ -135,7 +135,7 @@ class Preprocessor(object):
                 targets[partition] = torch.cat(targets[partition])
 
         return (processed_dataset, encoded_mentions, encoded_mentions_split_sizes, targets,
-                targets_mentions_split_sizes)
+                targets_split_sizes)
 
     def _process_doc(self, doc, model):
         """Returns 4-tuple of tokens, character offsets, embeddings, coreference resolutions and the
@@ -232,16 +232,6 @@ class Preprocessor(object):
 
             return mention_text, mention_corefs, encoded_mention
 
-        def _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx):
-            if mention_text in candidate_idxs:
-                candidate_idxs[mention_text].append(encoded_mention_idx)
-            else:
-                candidate_idxs[mention_text] = [encoded_mention_idx]
-
-            encoded_mention_idx += 1
-
-            return candidate_idxs, encoded_mention_idx
-
         for cand_start, cand_end in candidate_offsets:
             # Find the start and end char offsets for a candidate, AKA a mention
             mention_start = [i for i, offset in enumerate(offsets) if offset[0] == cand_start]
@@ -257,8 +247,8 @@ class Preprocessor(object):
                 encoded_mentions.append(encoded_mention)
 
                 # Maintains a mapping from candidates to their position in encoded_mentions
-                candidate_idxs, encoded_mention_idx = \
-                    _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx)
+                candidate_idxs[mention_text].append(encoded_mention_idx)
+                encoded_mention_idx += 1
 
                 # The first item is the mention itself, so skip it
                 for coref_start, coref_end in mention_corefs[1:]:
@@ -269,13 +259,13 @@ class Preprocessor(object):
                     processed_candidates[-1]['corefs'].append({'text': coref_text})
                     encoded_mentions.append(encoded_mention)
 
-                    candidate_idxs, encoded_mention_idx = \
-                        _process_candidate_idx(mention_text, candidate_idxs, encoded_mention_idx)
+                    candidate_idxs[mention_text].append(encoded_mention_idx)
+                    encoded_mention_idx += 1
 
         return processed_candidates, candidate_idxs, encoded_mentions, encoded_mention_idx
 
     def _find_candidates(self, candidates, supporting_doc):
-        """Finds all non-overlapping matches of `candidates` in `supporting_doc`.
+        """Finds all non-overlapping, case-insensitive matches of `candidates` in `supporting_doc`.
 
         Args:
             candidates (list): A list of strings containing candidates from Wiki- or MedHop.
@@ -285,7 +275,10 @@ class Preprocessor(object):
             List of tuples containing the start and end character offsets for all non-overlapping
             mentions of `candidates` in `supporting_doc`.
         """
-        pattern = re.compile(r'\b{}\b'.format(r'\b|\b'.join(candidates)), re.IGNORECASE)
+        # Escape all special regex characters in candidates, group by word boundary
+        candidates_regex = r'(\b|$)|(\b|^)'.join([re.escape(candidate) for candidate in candidates])
+        # Matches begin and end at word boundary or beginning/end of string respectively
+        pattern = re.compile(r'(\b|^){}(\b|$)'.format(candidates_regex), re.IGNORECASE)
         matches = [match.span() for match in pattern.finditer(supporting_doc)]
 
         return matches
