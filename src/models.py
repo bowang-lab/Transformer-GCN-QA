@@ -184,6 +184,9 @@ class TransformerGCNQA(nn.Module):
         # Final affine transform
         self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
 
+        # Softmax
+        self.log_softmax = nn.LogSoftmax(dim=0)
+
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
 
@@ -294,7 +297,7 @@ class TransformerGCNQA(nn.Module):
                 masked_max[i] = torch.max(logits[idxs])
                 # masked_softmax[i] = torch.exp(logits_masked_max)
         # masked_softmax /= torch.sum(masked_softmax)
-        masked_softmax = torch.exp(nn.LogSoftmax(masked_max))
+        masked_softmax = torch.exp(self.log_softmax(masked_max))
 
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
