@@ -286,13 +286,15 @@ class TransformerGCNQA(nn.Module):
         logits = self.fc_logits(x_query_cat)  # N x 1
 
         # Compute the masked softmax based on available candidates
-        masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
+        # masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
+        masked_max = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
             # Don't compute a likelihood if no instances of candidate
             if idxs:
-                logits_masked_max = torch.max(logits[idxs])
-                masked_softmax[i] = torch.exp(logits_masked_max)
-        masked_softmax /= torch.sum(masked_softmax)
+                masked_max[i] = torch.max(logits[idxs])
+                # masked_softmax[i] = torch.exp(logits_masked_max)
+        # masked_softmax /= torch.sum(masked_softmax)
+        masked_softmax = torch.exp(nn.LogSoftmax(masked_max))
 
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
