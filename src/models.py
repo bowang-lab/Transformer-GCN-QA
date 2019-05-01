@@ -184,6 +184,9 @@ class TransformerGCNQA(nn.Module):
         # Final affine transform
         self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
 
+        # Softmax
+        self.log_softmax = nn.LogSoftmax(dim=0)
+
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
 
@@ -286,13 +289,15 @@ class TransformerGCNQA(nn.Module):
         logits = self.fc_logits(x_query_cat)  # N x 1
 
         # Compute the masked softmax based on available candidates
-        masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
+        # masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
+        masked_max = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
             # Don't compute a likelihood if no instances of candidate
             if idxs:
-                logits_masked_max = torch.max(logits[idxs])
-                masked_softmax[i] = torch.exp(logits_masked_max)
-        masked_softmax /= torch.sum(masked_softmax)
+                masked_max[i] = torch.max(logits[idxs])
+                # masked_softmax[i] = torch.exp(logits_masked_max)
+        # masked_softmax /= torch.sum(masked_softmax)
+        masked_softmax = torch.exp(self.log_softmax(masked_max))
 
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
