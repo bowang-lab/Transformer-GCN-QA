@@ -272,14 +272,13 @@ class TransformerGCNQA(nn.Module):
         edge_index = graph[[0, 1], :]
         edge_type = graph[2, :]
 
-        rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
+        rgcn_layers_sum = torch.zeros_like(x)
         for layer in self.rgcn_layers:
             x = layer(x, edge_index, edge_type)
             # TODO (Duncan): Can add NL activations here if we want
-            rgcn_layer_outputs.append(x)
+            rgcn_layers_sum += x
 
-        # Sum outputs from each R-GCN layer
-        x = torch.sum(torch.stack(rgcn_layer_outputs), dim=0)  # N x self.rgcn_size
+        x = rgcn_layers_sum
 
         # Concatenate summed R-GCN output with query
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
