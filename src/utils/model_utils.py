@@ -49,14 +49,22 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
         processed_dataset (): TODO.
         dataloaders (): TODO.
     """
-    def train():
+    device, n_gpus = get_device(model)
+
+    # Cast to list so that we can index in
+    processed_dataset = {partition: list(processed_dataset[partition].values())
+                         for partition in processed_dataset}
+
+    for epoch in range(kwargs['epochs']):
+
+        # Train loop
         model.train()
 
         train_loss = 0
-        train_acc = 0
+        train_correct = 0
         train_steps = 0
 
-        pbar_descr = 'Epoch: {}/{}'.format(epoch, kwargs['epochs'] + 1)
+        pbar_descr = f"Epoch: {epoch + 1}/{kwargs['epochs']}"
         pbar_train = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
 
         for _, batch in enumerate(pbar_train):
@@ -81,8 +89,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
             loss.backward()
 
             # Gradient clipping
-            # torch.nn.utils.clip_grad_norm_(parameters=model.parameters(),
-            #                                max_norm=grad_norm)
+            torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
 
             optimizer.step()
 
@@ -97,73 +104,55 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
             # Track train acc
             pred = torch.argmax(logits).item()
             if target.squeeze(0)[pred]:
-                train_acc += 1
+                train_correct += 1
 
-            pbar_train.set_postfix(loss=train_loss / train_steps)
+            # TODO (John): Change sig dig on loss and acc
+            pbar_train.set_postfix(loss=f'{train_loss / train_steps:.4f}',
+                                   acc=f'{train_correct / train_steps:.2%}')
 
         pbar_train.close()
 
-        train_loss /= train_steps
-        train_acc /= train_steps
+        print(f'Train loss: {train_loss / train_steps:.4f}')
+        print(f'Train accuracy:, {train_correct / train_steps:.2%}')
 
-        return train_loss, train_acc
-
-    def evaluate():
-        model.eval()
-
-        dev_loss = 0
-        dev_acc = 0
-        dev_steps = 0
-
-        with torch.no_grad():
-            for batch in dataloaders['dev']:
-
-                index, encoded_mentions, graph, target = batch
-
-                index = index.item()
-                encoded_mentions = encoded_mentions.to(device)
-                graph = graph.to(device)
-                target = target.to(device)
-
-                # TODO: This is kind of ugly, maybe the model itself should deal with the batch
-                # index?
-                encoded_mentions = encoded_mentions.squeeze(0)
-                graph = graph.squeeze(0)
-
-                query = processed_dataset['dev'][index]['query']
-                candidate_indices = processed_dataset['dev'][index]['candidate_indices']
-
-                logits, loss = model(query, candidate_indices, encoded_mentions, graph, target)
-
-                if n_gpus > 1:
-                    loss = loss.mean()
-
-                dev_loss += loss.item()
-                dev_steps += 1
-
-                pred = torch.argmax(logits).item()
-                if target.squeeze(0)[pred]:
-                    dev_acc += 1
-
-        dev_loss /= dev_steps
-        dev_acc /= dev_steps
-
-        return dev_loss, dev_acc
-
-    device, n_gpus = get_device(model)
-
-    # Cast to list so that we can index in
-    processed_dataset = {partition: list(processed_dataset[partition].values())
-                         for partition in processed_dataset}
-
-    for epoch in range(kwargs['epochs']):
-        # Uncomment to exit and print traceback when NaN appears in backward pass
-        # with autograd.detect_anomaly():
-        train_loss, train_acc = train()
-        print('Train loss:', train_loss)
-        print('Train acc:', train_acc)
         # Run a validation step at the end of each epoch IF user provided dev partition
         if 'dev' in processed_dataset:
-            dev_loss, dev_acc = evaluate()
-            print('Dev loss:', dev_loss)
-            print('Dev acc:', dev_acc)
+            # Eval loop
+            model.eval()
+
+            dev_loss = 0
+            dev_correct = 0
+            dev_steps = 0
+
+            with torch.no_grad():
+                for batch in dataloaders['dev']:
+
+                    index, encoded_mentions, graph, target = batch
+
+                    index = index.item()
+                    encoded_mentions = encoded_mentions.to(device)
+                    graph = graph.to(device)
+                    target = target.to(device)
+
+                    # TODO: This is kind of ugly, maybe the model itself should deal with the batch
+                    # index?
+                    encoded_mentions = encoded_mentions.squeeze(0)
+                    graph = graph.squeeze(0)
+
+                    query = processed_dataset['dev'][index]['query']
+                    candidate_indices = processed_dataset['dev'][index]['candidate_indices']
+
+                    logits, loss = model(query, candidate_indices, encoded_mentions, graph, target)
+
+                    if n_gpus > 1:
+                        loss = loss.mean()
+
+                    dev_loss += loss.item()
+                    dev_steps += 1
+
+                    pred = torch.argmax(logits).item()
+                    if target.squeeze(0)[pred]:
+                        dev_correct += 1
+
+            print(f'Dev loss: {dev_loss / dev_steps:.4f}')
+            print(f'Dev accuracy:, {dev_correct / dev_steps:.2%}')
