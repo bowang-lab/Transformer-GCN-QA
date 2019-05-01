@@ -150,7 +150,8 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, n_rgcn_layers=3, n_rels=3, rgcn_size=128, n_rgcn_bases=3):
+    def __init__(self, nlp=None, batch_size=1, dropout_rate=0.3, n_rgcn_layers=3, n_rels=3,
+                 rgcn_size=128, n_rgcn_bases=3, **kwargs):
         super().__init__()
         # TODO: The number of calls to this function is growing... can we call it once and pass
         # device around?
@@ -164,18 +165,21 @@ class TransformerGCNQA(nn.Module):
 
         # Hyperparameters of the model
         self.batch_size = batch_size
+        self.dropout_rate = dropout_rate
         self.n_rgcn_layers = n_rgcn_layers
         self.n_rels = n_rels
         self.rgcn_size = rgcn_size
         self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
 
-        # layers of the model
+        # Layers of the model
+        self.dropout = nn.Dropout(dropout_rate)
         self.fc = nn.Linear(1536, self.rgcn_size)
 
         # Instantiate R-GCN layers
         self.rgcn_layers = []
         for _ in range(self.n_rgcn_layers):
-            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases))
+            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels,
+                                             self.n_rgcn_bases))
 
         # Add R-GCN layers to model
         for i, layer in enumerate(self.rgcn_layers):
@@ -184,8 +188,10 @@ class TransformerGCNQA(nn.Module):
         # Final affine transform
         self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
 
-        # Softmax
         self.log_softmax = nn.LogSoftmax(dim=0)
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
@@ -270,6 +276,7 @@ class TransformerGCNQA(nn.Module):
         encoded_query = self.encode_query(query)
 
         x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
+        x = self.dropout(x)
 
         # Separate `graph` into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
