@@ -6,13 +6,14 @@ from torch import nn
 
 from torch_geometric.nn import RGCNConv
 
-from .utils.model_utils import get_device
 from .constants import CLS
 from .constants import PAD
+from .constants import PRETRAINED_BERT_MODEL
 from .constants import PRETRAINED_BERT_MODELS
 from .constants import SEP
 from .constants import SPACY_MODEL
 from .utils import model_utils
+from .utils.model_utils import get_device
 
 
 class BERT(object):
@@ -25,7 +26,7 @@ class BERT(object):
     Raises:
         ValueError if `pretrained_model` not in `PRETRAINED_BERT_MODELS`.
     """
-    def __init__(self, pretrained_model='bert-base-uncased'):
+    def __init__(self, pretrained_model=PRETRAINED_BERT_MODEL):
         if pretrained_model not in PRETRAINED_BERT_MODELS:
             err_msg = ("Expected `pretrained_model` to be one of {}."
                        " Got: {}".format(', '.join(PRETRAINED_BERT_MODELS), pretrained_model))
@@ -43,26 +44,27 @@ class BERT(object):
 
         Using the pre-trained BERT tokenizer (`self.tokenizer`) and the pre-trained BERT model
         (`self.model), runs a prediction step on a list of lists representing tokenized sentences
-        (`tokens`). Returns the a tensor containing the hidden state of the last layer in
+        (`tokens`). Returns a tensor containing the hidden state of the last layer in
         `self.model`, which corresponds to a contextualized token embedding for each token in
         `text`.
 
         Args:
             tokens (list): List of lists containing tokenized sentences.
-            only_cls (bool): If True, a tensor of shape (len(tokens) x 768) is returned,
+            only_cls (bool): If True, a tensor of shape (`len(tokens)`, `768`) is returned,
                 corresponding to the output of the final layer of BERT on the special sentence
                 classification token (`CLS`) for each sentence in `tokens`. This can be thought of
-                as a summary of the input sentence. Otherwise, a tensor of the same shape as
-                `tokens` is returned. Defaults to False.
+                as a summary of the input sentence. Otherwise, a tensor of the shape
+                (`len(tokens)`, `max(tokens, key=len)`), `768`) is returned. Defaults to False.
 
         Returns:
             A Tensor, containing the hidden states of the last layer in `self.model`, which
             corresponds to a contextualized token embedding for each token in `text` if `only_cls`
-            is False, otherwise a tensor of shape (len(tokens) x 768) corresponding to the hidden
+            is False, otherwise a tensor of shape (`len(tokens)`, `768`) corresponding to the hidden
             state of the last layer in `self.model` for the special sentence classification token
             (`CLS`).
         """
-        indexed_tokens, attention_masks, orig_to_bert_tok_map = self.process_tokenized_input(tokens)
+        indexed_tokens, attention_masks, orig_to_bert_tok_map = \
+            self._process_tokenized_input(tokens)
 
         # Predict hidden states features for each layer
         with torch.no_grad():
@@ -77,14 +79,14 @@ class BERT(object):
 
         return encoded_output, orig_to_bert_tok_map
 
-    def process_tokenized_input(self, tokens):
+    def _process_tokenized_input(self, tokens):
         """Processes tokenized sentences (`tokens`) for inference with BERT.
 
         Given `tokens`, a list of list representing tokenized sentences, processes the tokens
         and returns a three-tuple of token indices, attention masks and an original token to BERT
         token map. The token indices and attention masks can be used for inference with BERT. The
         original token to BERT token map is a determinisitc mapping for each token in `tokens`
-        to the returned, token indices (note this is required as the tokenization process creates
+        to the returned token indices (this is required as the tokenization process creates
         sub-tokens).
 
         Returns:
@@ -97,11 +99,11 @@ class BERT(object):
         max_sent = len(max(bert_tokens, key=len))
         bert_tokens = [sent + [PAD] * (max_sent - len(sent)) for sent in bert_tokens]
 
-        # Generate attention masks for pad values
-        attention_masks = [[int(token == PAD) for token in sent] for sent in bert_tokens]
-
         # Convert token to vocabulary indices
         indexed_tokens = [self.tokenizer.convert_tokens_to_ids(sent) for sent in bert_tokens]
+
+        # Generate attention masks for pad values
+        attention_masks = [[float(idx > 0) for idx in sent] for sent in indexed_tokens]
 
         # Convert inputs to PyTorch tensors, put them on same device as model
         indexed_tokens = torch.tensor(indexed_tokens).to(self.device)
