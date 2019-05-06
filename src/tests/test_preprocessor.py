@@ -8,13 +8,13 @@ class TestPreprocessor():
     """Collects all unit tests for `src.preprocessor.Preprocessor` a class for preprocessing Wiki-
     or MedHop.
     """
-    def test_transform_simple(self, dataset, preprocessor, model):
+    def test_transform_simple(self, dataset, preprocessor, bert):
         """Given a simply example, asserts that `preprocess.transform()` returns the expected
         values.
         """
         (actual_processed_dataset, actual_encoded_mentions, actual_encoded_mentions_split_sizes,
          actual_targets, actual_targets_split_sizes) = \
-            preprocessor.transform(dataset, model)
+            preprocessor.transform(dataset, bert)
 
         # TODO 1 Example should include corefs
         expected_processed_dataset = {
@@ -61,18 +61,18 @@ class TestPreprocessor():
         assert torch.equal(expected_targets, actual_targets['train'])
         assert expected_targets_split_sizes, actual_targets_split_sizes['train']
 
-    def test_process_doc_simple(self, preprocessor, model):
+    def test_process_doc_simple(self, preprocessor, bert):
         """Given a simple example, asserts that `preprocessor._process_doc` returns the expected
         values.
         """
         doc = preprocessor.nlp('My sister has a dog. She loves him.')
 
-        expected_tokens = ['My', 'sister', 'has', 'a', 'dog', '.', 'She', 'loves', 'him', '.']
+        expected_tokens = ['my', 'sister', 'has', 'a', 'dog', '.', 'she', 'loves', 'him', '.']
         expected_offsets = [(0, 2), (3, 9), (10, 13), (14, 15), (16, 19), (19, 20), (21, 24),
                             (25, 30), (31, 34), (34, 35)]
         expected_corefs = [[(0, 9), (21, 24)], [(14, 19), (31, 34)]]
 
-        actual = preprocessor._process_doc(doc=doc, model=model)
+        actual = preprocessor._process_doc(doc=doc, model=bert)
         actual_tokens, actual_offsets, actual_corefs, actual_embeddings = actual
 
         assert expected_tokens == actual_tokens
@@ -80,7 +80,7 @@ class TestPreprocessor():
         assert expected_corefs == actual_corefs
         assert actual_embeddings.shape[0] == len(expected_tokens)
 
-    def test_process_candidates_simple(self, preprocessor, model):
+    def test_process_candidates_simple(self, preprocessor, bert):
         """Given a simple example, asserts that `preprocessor._process_candidates` returns the
         expected values.
         """
@@ -114,7 +114,7 @@ class TestPreprocessor():
             'arbitrary test': [],
         }
 
-        tokens, offsets, corefs, embeddings = preprocessor._process_doc(doc, model)
+        tokens, offsets, corefs, embeddings = preprocessor._process_doc(doc, bert)
         candidate_offsets = preprocessor._find_candidates(candidates, supporting_doc)
         candidate_indices = {candidate: [] for candidate in candidates}
 
@@ -126,7 +126,7 @@ class TestPreprocessor():
                                              offsets=offsets,
                                              corefs=corefs,
                                              embeddings=embeddings,
-                                             candidate_idxs=candidate_indices)
+                                             candidate_indices=candidate_indices)
 
         assert expected_processed_candidates == actual_processed_candidates
         assert expected_candidate_idxs == actual_candidate_idxs

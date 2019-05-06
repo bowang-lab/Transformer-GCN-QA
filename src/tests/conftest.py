@@ -38,7 +38,7 @@ def preprocessor(nlp):
 
 
 @pytest.fixture
-def model():
+def bert():
     """Returns an instance of a BERT object."""
     bert = BERT()
 
