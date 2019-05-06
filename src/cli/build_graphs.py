@@ -12,7 +12,7 @@ from ..graph_builder import GraphBuilder
 # would be one call to GraphBuilder, followed by one loop over partitions to save files.
 
 
-def main(input_directory):
+def main(**kwargs):
     """Builds a set of graphs given the preprocessed Wiki- or MedHop dataset at `input_directory`.
 
     Given a preprocessed Wiki- or MedHop dataset at `input_directory`, creates a graphs for each
@@ -23,7 +23,7 @@ def main(input_directory):
     Args:
         input_directory (str): Path to the preprocessed Wiki- or MedHop dataset.
     """
-    partitions = glob(os.path.join(input_directory, '*'))
+    partitions = glob(os.path.join(kwargs['input'], '*'))
 
     for partition_filepath in partitions:
 
@@ -35,7 +35,7 @@ def main(input_directory):
 
         # Build the graphs
         graph_builder = GraphBuilder(processed_dataset)
-        graphs, graph_split_sizes = graph_builder.build()
+        graphs, graph_split_sizes = graph_builder.build(complement=kwargs['complement'])
 
         # Save graphs and their chunk sizes
         graphs_filepath = os.path.join(partition_filepath, 'graphs.pt')
@@ -51,11 +51,14 @@ if __name__ == '__main__':
     description = '''Builds a set of graphs for the given preprocessed Wiki- or MedHop dataset at
     `input_directory`.'''
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-i', '--input', help=('Path to the preprocessed Wiki- or MedHop dataset.'
-                                               ' The graph files are saved here.'))
+    parser.add_argument('-i', '--input', type=str, required=True,
+                        help='Path to the preprocessed Wiki- or MedHop dataset.')
+    parser.add_argument('-c', '--complement', action='store_true',
+                        help=('Optional, provide this argument if COMPLEMENT edges should be'
+                              ' added when building the graph'))
 
-    args = parser.parse_args()
+    args = vars(parser.parse_args())
 
     # TODO: type check input to ensure it is a pickle.
 
-    main(args.input)
+    main(**args)
