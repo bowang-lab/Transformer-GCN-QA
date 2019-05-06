@@ -36,7 +36,7 @@ class BERT(object):
         self.model = BertModel.from_pretrained(pretrained_model)
 
         # Place the model on a CUDA device if avaliable
-        self.device, _ = model_utils.get_device(self.model)
+        self.device, _, self.model = model_utils.get_device(self.model)
 
     def predict_on_tokens(self, tokens, only_cls=False):
         """Uses `self.tokenizer` and `self.model` to run a prediction step on `tokens`.
@@ -150,8 +150,8 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, dropout_rate=0.3, n_rgcn_layers=3, n_rels=3,
-                 rgcn_size=128, n_rgcn_bases=3, **kwargs):
+    def __init__(self, nlp=None, batch_size=1, dropout_rate=0.2, n_rgcn_layers=3, n_rels=4,
+                 rgcn_size=128, n_rgcn_bases=2, **kwargs):
         super().__init__()
         # TODO: The number of calls to this function is growing... can we call it once and pass
         # device around?
@@ -169,24 +169,21 @@ class TransformerGCNQA(nn.Module):
         self.n_rgcn_layers = n_rgcn_layers
         self.n_rels = n_rels
         self.rgcn_size = rgcn_size
-        self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
+        self.n_rgcn_bases = n_rgcn_bases
 
         # Layers of the model
+        self.fc_1 = nn.Linear(1536, 786)
+        self.fc_2 = nn.Linear(786, self.rgcn_size)
+        self.leaky_relu = nn.LeakyReLU()
         self.dropout = nn.Dropout(dropout_rate)
-        self.fc = nn.Linear(1536, self.rgcn_size)
 
-        # Instantiate R-GCN layers
-        self.rgcn_layers = []
-        for _ in range(self.n_rgcn_layers):
-            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels,
-                                             self.n_rgcn_bases))
-
-        # Add R-GCN layers to model
-        for i, layer in enumerate(self.rgcn_layers):
-            self.add_module('RGCN_{}'.format(i), layer)
+        # Instantiate R-GCN
+        self.rgcn_layer = RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases)
 
         # Final affine transform
-        self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
+        self.fc_3 = nn.Linear(self.rgcn_size + 768, 256)
+        self.fc_4 = nn.Linear(256, 128)
+        self.fc_5 = nn.Linear(128, 1)
 
         self.log_softmax = nn.LogSoftmax(dim=0)
 
@@ -241,7 +238,6 @@ class TransformerGCNQA(nn.Module):
             each encoded mention and pushing the resulting tensor through a dense layer
             (`self.fc_1`).
         """
-        activation = nn.LeakyReLU()
         num_mentions = encoded_mentions.shape[0]
 
         concat_encodings = \
@@ -249,7 +245,10 @@ class TransformerGCNQA(nn.Module):
 
         # Push concatenated query and mention encodings through fc layer followed by leaky ReLU
         # activation to get our query_aware_mention_encoding
-        query_aware_mention_encoding = activation(self.fc(concat_encodings))
+        query_aware_mention_encoding = self.leaky_relu(self.fc_1(concat_encodings))
+        query_aware_mention_encoding = self.dropout(query_aware_mention_encoding)
+        query_aware_mention_encoding = self.leaky_relu(self.fc_2(query_aware_mention_encoding))
+        query_aware_mention_encoding = self.dropout(query_aware_mention_encoding)
 
         return query_aware_mention_encoding
 
@@ -276,15 +275,14 @@ class TransformerGCNQA(nn.Module):
         encoded_query = self.encode_query(query)
 
         x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
-        x = self.dropout(x)
 
         # Separate `graph` into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
         edge_type = graph[2, :]
 
         rgcn_layers_sum = torch.zeros_like(x)
-        for layer in self.rgcn_layers:
-            x = layer(x, edge_index, edge_type)
+        for _ in range(self.n_rgcn_layers):
+            x = self.rgcn_layer(x, edge_index, edge_type)
             # TODO (Duncan): Can add NL activations here if we want
             rgcn_layers_sum += x
 
@@ -293,17 +291,21 @@ class TransformerGCNQA(nn.Module):
         # Concatenate summed R-GCN output with query
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
 
-        logits = self.fc_logits(x_query_cat)  # N x 1
+        # Affine transformations
+        logits = self.fc_3(x_query_cat)
+        logits = self.dropout(logits)
+        logits = self.fc_4(logits)
+        logits = self.dropout(logits)
+        logits = self.fc_5(logits)  # N x 1
+        logits = self.dropout(logits)
 
         # Compute the masked softmax based on available candidates
-        # masked_softmax = torch.zeros(len(candidate_indices)).to(self.device)
         masked_max = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
             # Don't compute a likelihood if no instances of candidate
             if idxs:
                 masked_max[i] = torch.max(logits[idxs])
-                # masked_softmax[i] = torch.exp(logits_masked_max)
-        # masked_softmax /= torch.sum(masked_softmax)
+
         masked_softmax = torch.exp(self.log_softmax(masked_max))
 
         # If target is provided compute loss, otherwise return `masked_softmax`
