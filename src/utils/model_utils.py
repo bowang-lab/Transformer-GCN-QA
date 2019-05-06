@@ -1,6 +1,9 @@
+import gc
+
 import torch
 from tqdm import tqdm
-# from torch import autograd
+
+from ..constants import TRAIN_SIZE_THRESHOLD
 
 
 def get_device(model=None):
@@ -27,7 +30,7 @@ def get_device(model=None):
         n_gpu = torch.cuda.device_count()
         # if model is provided, we place it on the GPU and parallize it (if possible)
         if model:
-            model.to(device)
+            model = model.to(device)
             if n_gpu > 1:
                 model = torch.nn.DataParallel(model)
         model_names = ', '.join([torch.cuda.get_device_name(i) for i in range(n_gpu)])
@@ -36,7 +39,18 @@ def get_device(model=None):
         device = torch.device("cpu")
         print('No GPU available. Using CPU.')
 
+    if model:
+        return device, n_gpu, model
+
     return device, n_gpu
+
+
+# TODO: Check that this actually helps, otherwise chuck it
+def free_memory(*args):
+    for arg in args:
+        del arg
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 # TODO: There is a lot of repeated code between train / dev loops. Encapsulate
@@ -45,33 +59,38 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
     Args:
         model (): TODO.
-        optimzer (): TODO.
-        processed_dataset (): TODO.
-        dataloaders (): TODO.
+        optimizer (torch.optim): TODO.
+        processed_dataset (dict): TODO.
+        dataloaders (dict): TODO.
     """
-    device, n_gpus = get_device(model)
+    device, n_gpus, model = get_device(model)
 
     # Cast to list so that we can index in
     processed_dataset = {partition: list(processed_dataset[partition].values())
                          for partition in processed_dataset}
+
+    # Dictionary which scores per partition and per epoch performance metrics
+    evaluation_scores = {partition: {epoch: None for epoch in range(1, kwargs['epochs'] + 1)}
+                         for partition in processed_dataset}
+
+    best_dev_acc = 0
+    best_dev_epoch = 0
 
     for epoch in range(kwargs['epochs']):
 
         # Train loop
         model.train()
 
-        train_loss = 0
-        train_correct = 0
-        train_steps = 0
+        optimizer.zero_grad()
+
+        train_loss, train_steps = 0, 0
 
         pbar_descr = f"Epoch: {epoch + 1}/{kwargs['epochs']}"
-        pbar_train = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
+        pbar = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
 
-        for _, batch in enumerate(pbar_train):
+        batch_idx = 0
 
-            optimizer.zero_grad()
-
-            index, encoded_mentions, graph, target = batch
+        for index, encoded_mentions, graph, target in pbar:
 
             index = index.item()
             encoded_mentions = encoded_mentions.to(device)
@@ -82,77 +101,89 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
             encoded_mentions = encoded_mentions.squeeze(0)
             graph = graph.squeeze(0)
 
+            # Don't train on empty graphs or those which exceed some size threshold
+            if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                # print(f'Found a large graph of size {graph.shape[-1]}. Skipping.')
+                continue
+
             query = processed_dataset['train'][index]['query']
             candidate_indices = processed_dataset['train'][index]['candidate_indices']
 
-            logits, loss = model(query, candidate_indices, encoded_mentions, graph, target)
+            _, loss = model(query, candidate_indices, encoded_mentions, graph, target)
+            loss /= kwargs['batch_size']
             loss.backward()
 
-            # Gradient clipping
-            torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
-
-            optimizer.step()
-
-            # Loss object is a vector of size n_gpus, need to average if more than 1
-            if n_gpus > 1:
-                loss = loss.mean()
-
-            # Track train loss
             train_loss += loss.item()
-            train_steps += 1
 
-            # Track train acc
-            pred = torch.argmax(logits).item()
-            if target.squeeze(0)[pred]:
-                train_correct += 1
+            if (batch_idx + 1) % kwargs['batch_size'] == 0:
+                # Gradient clipping
+                if kwargs['grad_norm']:
+                    torch.nn.utils.clip_grad_norm_(parameters=model.parameters(),
+                                                   max_norm=kwargs['grad_norm'])
+                optimizer.step()
+                optimizer.zero_grad()
 
-            # TODO (John): Change sig dig on loss and acc
-            pbar_train.set_postfix(loss=f'{train_loss / train_steps:.4f}',
-                                   acc=f'{train_correct / train_steps:.2%}')
+                train_steps += 1
 
-        pbar_train.close()
+                pbar.set_postfix(loss=f'{train_loss / train_steps:.4f}')
 
-        print(f'Train loss: {train_loss / train_steps:.4f}')
-        print(f'Train accuracy:, {train_correct / train_steps:.2%}')
+            batch_idx += 1
 
-        # Run a validation step at the end of each epoch IF user provided dev partition
-        if 'dev' in processed_dataset:
-            # Eval loop
+        optimizer.zero_grad()
+        pbar.close()
+
+        free_memory(encoded_mentions, graph, target)
+
+        # Eval loop
+        if (epoch + 1) % 1 == 0:
+
             model.eval()
 
-            dev_loss = 0
-            dev_correct = 0
-            dev_steps = 0
+            for partition, dataloader in dataloaders.items():
 
-            with torch.no_grad():
-                for batch in dataloaders['dev']:
+                num_correct = 0
+                num_steps = 0
 
-                    index, encoded_mentions, graph, target = batch
+                with torch.no_grad():
+                    for index, encoded_mentions, graph, target in dataloader:
 
-                    index = index.item()
-                    encoded_mentions = encoded_mentions.to(device)
-                    graph = graph.to(device)
-                    target = target.to(device)
+                        index = index.item()
+                        encoded_mentions = encoded_mentions.to(device)
+                        graph = graph.to(device)
+                        target = target.to(device)
 
-                    # TODO: This is kind of ugly, maybe the model itself should deal with the batch
-                    # index?
-                    encoded_mentions = encoded_mentions.squeeze(0)
-                    graph = graph.squeeze(0)
+                        # TODO: This is kind of ugly, maybe the model itself should deal with the
+                        # batch index?
+                        encoded_mentions = encoded_mentions.squeeze(0)
+                        graph = graph.squeeze(0)
 
-                    query = processed_dataset['dev'][index]['query']
-                    candidate_indices = processed_dataset['dev'][index]['candidate_indices']
+                        if graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                            # print(f'Found a large graph of size {graph.shape[-1]}. Skipping.')
+                            continue
 
-                    logits, loss = model(query, candidate_indices, encoded_mentions, graph, target)
+                        query = processed_dataset[partition][index]['query']
+                        candidate_indices = processed_dataset[partition][index]['candidate_indices']
 
-                    if n_gpus > 1:
-                        loss = loss.mean()
+                        logits, _ = model(query, candidate_indices, encoded_mentions, graph, target)
 
-                    dev_loss += loss.item()
-                    dev_steps += 1
+                        num_steps += 1
 
-                    pred = torch.argmax(logits).item()
-                    if target.squeeze(0)[pred]:
-                        dev_correct += 1
+                        pred = torch.argmax(logits).item()
+                        if target.squeeze(0)[pred]:
+                            num_correct += 1
 
-            print(f'Dev loss: {dev_loss / dev_steps:.4f}')
-            print(f'Dev accuracy:, {dev_correct / dev_steps:.2%}')
+                accuracy = num_correct / num_steps
+
+                evaluation_scores[partition][epoch] = accuracy
+
+                if partition == 'dev' and accuracy > best_dev_acc:
+                    best_dev_acc = accuracy
+                    best_dev_epoch = epoch
+
+                print(f'{partition.title()} accuracy: {accuracy:.2%}')
+
+        free_memory(encoded_mentions, graph, target)
+
+    print(f'Best dev accuracy was {best_dev_acc:.2%} on epoch: {best_dev_epoch}')
+
+    return evaluation_scores
