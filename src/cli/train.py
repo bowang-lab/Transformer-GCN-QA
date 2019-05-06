@@ -33,15 +33,18 @@ if __name__ == '__main__':
 
     parser.add_argument('-i', '--input', type=str, required=True,
                         help='Path to the preprocessed Wiki- or MedHop dataset.')
-    parser.add_argument('-dr', '--dropout_rate', default=0.3, type=float, required=False,
-                        help='Optional, dropout rate. Defaults to 0.3.')
+    parser.add_argument('-bs', '--batch_size', default=32, type=int, required=False,
+                        help=('Optional, effective batch size achieved with gradient accumulation.'
+                              ' Defaults to 32.'))
+    parser.add_argument('-dr', '--dropout_rate', default=0.2, type=float, required=False,
+                        help='Optional, dropout rate. Defaults to 0.2.')
     parser.add_argument('-ep', '--epochs', default=20, type=int, required=False,
                         help='Optional, number of epochs to train the model for. Defaults to 20.')
     parser.add_argument('-gn', '--grad_norm', default=1.0, type=float, required=False,
                         help=('Optional, maximum norm to clip all parameter gradients. Defaults to'
                               ' 1.0.'))
-    parser.add_argument('-lr', '--learning_rate', default=1e-5, type=float, required=False,
-                        help='Optional, learning rate for the optimizer. Defaults to 1e-5.')
+    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, required=False,
+                        help='Optional, learning rate for the optimizer. Defaults to 1e-4.')
 
     args = vars(parser.parse_args())
 
