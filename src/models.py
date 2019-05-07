@@ -64,7 +64,7 @@ class BERT(object):
             (`CLS`).
         """
         indexed_tokens, attention_masks, orig_to_bert_tok_map = \
-            self._process_tokenized_input(tokens)
+            self.process_tokenized_input(tokens)
 
         # Predict hidden states features for each layer
         with torch.no_grad():
@@ -79,7 +79,7 @@ class BERT(object):
 
         return encoded_output, orig_to_bert_tok_map
 
-    def _process_tokenized_input(self, tokens):
+    def process_tokenized_input(self, tokens):
         """Processes tokenized sentences (`tokens`) for inference with BERT.
 
         Given `tokens`, a list of list representing tokenized sentences, processes the tokens
@@ -152,11 +152,10 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, batch_size=1, dropout_rate=0.2, n_rgcn_layers=3, n_rels=4,
-                 rgcn_size=128, n_rgcn_bases=2, **kwargs):
+    def __init__(self, nlp=None, dropout_rate=0.2, n_rgcn_layers=3, n_rels=4, rgcn_size=128,
+                 n_rgcn_bases=2, **kwargs):
         super().__init__()
-        # TODO: The number of calls to this function is growing... can we call it once and pass
-        # device around?
+        # TODO (John): This function is called multiple times. Find way to call it once.
         self.device, _ = get_device()
 
         # An object for processing natural language
@@ -166,8 +165,8 @@ class TransformerGCNQA(nn.Module):
         self.bert = BERT()
 
         # Hyperparameters of the model
-        self.batch_size = batch_size
         self.dropout_rate = dropout_rate
+
         self.n_rgcn_layers = n_rgcn_layers
         self.n_rels = n_rels
         self.rgcn_size = rgcn_size
@@ -179,10 +178,8 @@ class TransformerGCNQA(nn.Module):
         self.leaky_relu = nn.LeakyReLU()
         self.dropout = nn.Dropout(dropout_rate)
 
-        # Instantiate R-GCN
         self.rgcn_layer = RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases)
 
-        # Final affine transform
         self.fc_3 = nn.Linear(self.rgcn_size + 768, 256)
         self.fc_4 = nn.Linear(256, 128)
         self.fc_5 = nn.Linear(128, 1)
@@ -197,7 +194,7 @@ class TransformerGCNQA(nn.Module):
 
         Reorganizes the query into a subject-verb statment and embeds it using the
         loaded and pre-trained BERT model (`self.bert`). The embedding assigned to the [CLS] token
-        (`constants.CLS`) by BERT is taken as the encoded query.
+        by BERT is taken as the encoded query.
 
         Args:
             query (str): A string representing the input query from Wiki- or MedHop.

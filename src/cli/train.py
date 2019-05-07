@@ -33,18 +33,30 @@ if __name__ == '__main__':
 
     parser.add_argument('-i', '--input', type=str, required=True,
                         help='Path to the preprocessed Wiki- or MedHop dataset.')
-    parser.add_argument('-bs', '--batch_size', default=32, type=int, required=False,
+    # Hyperparameters
+    parser.add_argument('--batch_size', default=32, type=int, required=False,
                         help=('Optional, effective batch size achieved with gradient accumulation.'
                               ' Defaults to 32.'))
-    parser.add_argument('-dr', '--dropout_rate', default=0.2, type=float, required=False,
+    parser.add_argument('--dropout_rate', default=0.2, type=float, required=False,
                         help='Optional, dropout rate. Defaults to 0.2.')
-    parser.add_argument('-ep', '--epochs', default=20, type=int, required=False,
+    parser.add_argument('--epochs', default=20, type=int, required=False,
                         help='Optional, number of epochs to train the model for. Defaults to 20.')
-    parser.add_argument('-gn', '--grad_norm', default=1.0, type=float, required=False,
-                        help=('Optional, maximum norm to clip all parameter gradients. Defaults to'
-                              ' 1.0.'))
+    parser.add_argument('--grad_norm', default=1.0, type=float, required=False,
+                        help=('Optional, maximum L2 norm to clip all parameter gradients. Defaults'
+                              ' to 1.0.'))
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, required=False,
                         help='Optional, learning rate for the optimizer. Defaults to 1e-4.')
+    # R-GCN
+    parser.add_argument('--n_rgcn_layers', default=3, type=int, required=False,
+                        help='Optional, number of layers in the R-GCN. Defaults to 3.')
+    parser.add_argument('--n_rels', default=4, type=int, required=False,
+                        help=('Optional, number of relations in the R-GCN. Set this to 3 if graphs'
+                              ' where built with complement=True, otherwise set to 4. Defaults to'
+                              ' 4.'))
+    parser.add_argument('--rgcn_size', default=128, type=int, required=False,
+                        help='Optional, dimensionality of the R-GCN layers. Defaults to 128.')
+    parser.add_argument('--n_rgcn_bases', default=2, type=int, required=False,
+                        help='TODO (Duncan).')
 
     args = vars(parser.parse_args())
 
