@@ -1,40 +1,63 @@
 import argparse
 
-from torch.utils import data
+from torch.optim import Adam
 
-from .dataset import Dataset
-from .utils.dataset_utils import load_preprocessed_wikihop
-from .utils.model_utils import train
-from .models import TransformerGCNQA
+from ..models import TransformerGCNQA
+from ..utils.dataset_utils import get_dataloaders
+from ..utils.dataset_utils import load_preprocessed_wikihop
+from ..utils.model_utils import train
 
 
-def main(input_directory):
+def main(**kwargs):
     """Runs a training loop for the `TransformerGCNQA` model.
+
+    Args:
+        input_directory (str): Path to the preprocessed Wiki- or MedHop dataset.
     """
-    # Define our model
-    model = TransformerGCNQA()
+    model = TransformerGCNQA(**kwargs)
 
-    # Load preprocessed dataset
+    optimizer = Adam(model.parameters(), lr=kwargs['learning_rate'])
+
+    # Load preprocessed Wiki- or MedHop dataset
     processed_dataset, encoded_mentions, graphs, targets = \
-        load_preprocessed_wikihop(input_directory)
+        load_preprocessed_wikihop(kwargs['input'])
 
-    # Get the dataloaders
-    dataloaders = {}
-    for partition in processed_dataset:
-        shuffle = True if partition == 'train' else False
+    dataloaders = get_dataloaders(processed_dataset, encoded_mentions, graphs, targets)
 
-        dataset = Dataset(encoded_mentions[partition], graphs[partition], targets[partition])
-        dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
-
-    # Train the model
-    train(model, processed_dataset, dataloaders)
+    train(model, optimizer, processed_dataset, dataloaders, **kwargs)
 
 
 if __name__ == '__main__':
     description = ''''Runs a training loop for the TransformerGCNQA model.'''
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-i', '--input', help='Path to the preprocessed Wiki- or MedHop dataset.')
-    # TODO: Arguments for hyperparams, consider using a config file
 
-    args = parser.parse_args()
-    main(args.input)
+    parser.add_argument('-i', '--input', type=str, required=True,
+                        help='Path to the preprocessed Wiki- or MedHop dataset.')
+    # Hyperparameters
+    parser.add_argument('--batch_size', default=32, type=int, required=False,
+                        help=('Optional, effective batch size achieved with gradient accumulation.'
+                              ' Defaults to 32.'))
+    parser.add_argument('--dropout_rate', default=0.2, type=float, required=False,
+                        help='Optional, dropout rate. Defaults to 0.2.')
+    parser.add_argument('--epochs', default=20, type=int, required=False,
+                        help='Optional, number of epochs to train the model for. Defaults to 20.')
+    parser.add_argument('--grad_norm', default=1.0, type=float, required=False,
+                        help=('Optional, maximum L2 norm to clip all parameter gradients. Defaults'
+                              ' to 1.0.'))
+    parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, required=False,
+                        help='Optional, learning rate for the optimizer. Defaults to 1e-4.')
+    # R-GCN
+    parser.add_argument('--n_rgcn_layers', default=3, type=int, required=False,
+                        help='Optional, number of layers in the R-GCN. Defaults to 3.')
+    parser.add_argument('--n_rels', default=4, type=int, required=False,
+                        help=('Optional, number of relations in the R-GCN. Set this to 3 if graphs'
+                              ' where built with complement=True, otherwise set to 4. Defaults to'
+                              ' 4.'))
+    parser.add_argument('--rgcn_size', default=128, type=int, required=False,
+                        help='Optional, dimensionality of the R-GCN layers. Defaults to 128.')
+    parser.add_argument('--n_rgcn_bases', default=2, type=int, required=False,
+                        help='TODO (Duncan).')
+
+    args = vars(parser.parse_args())
+
+    main(**args)

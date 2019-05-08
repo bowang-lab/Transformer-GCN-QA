@@ -3,14 +3,17 @@ import torch
 from pytorch_pretrained_bert import BertModel
 from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
+
 from torch_geometric.nn import RGCNConv
 
 from .constants import CLS
 from .constants import PAD
+from .constants import PRETRAINED_BERT_MODEL
 from .constants import PRETRAINED_BERT_MODELS
 from .constants import SEP
 from .constants import SPACY_MODEL
 from .utils import model_utils
+from .utils.model_utils import get_device
 
 
 class BERT(object):
@@ -23,7 +26,7 @@ class BERT(object):
     Raises:
         ValueError if `pretrained_model` not in `PRETRAINED_BERT_MODELS`.
     """
-    def __init__(self, pretrained_model='bert-base-uncased'):
+    def __init__(self, pretrained_model=PRETRAINED_BERT_MODEL):
         if pretrained_model not in PRETRAINED_BERT_MODELS:
             err_msg = ("Expected `pretrained_model` to be one of {}."
                        " Got: {}".format(', '.join(PRETRAINED_BERT_MODELS), pretrained_model))
@@ -34,33 +37,34 @@ class BERT(object):
         self.model = BertModel.from_pretrained(pretrained_model)
 
         # Place the model on a CUDA device if avaliable
-        self.device, self.n_gpus = model_utils.get_device(self.model)
+        self.device, _, self.model = model_utils.get_device(self.model)
 
     def predict_on_tokens(self, tokens, only_cls=False):
         """Uses `self.tokenizer` and `self.model` to run a prediction step on `tokens`.
 
         Using the pre-trained BERT tokenizer (`self.tokenizer`) and the pre-trained BERT model
         (`self.model), runs a prediction step on a list of lists representing tokenized sentences
-        (`tokens`). Returns the a tensor containing the hidden state of the last layer in
+        (`tokens`). Returns a tensor containing the hidden state of the last layer in
         `self.model`, which corresponds to a contextualized token embedding for each token in
         `text`.
 
         Args:
             tokens (list): List of lists containing tokenized sentences.
-            only_cls (bool): If True, a tensor of shape (len(tokens) x 768) is returned,
+            only_cls (bool): If True, a tensor of shape (`len(tokens)`, `768`) is returned,
                 corresponding to the output of the final layer of BERT on the special sentence
                 classification token (`CLS`) for each sentence in `tokens`. This can be thought of
-                as a summary of the input sentence. Otherwise, a tensor of the same shape as
-                `tokens` is returned. Defaults to False.
+                as a summary of the input sentence. Otherwise, a tensor of the shape
+                (`len(tokens)`, `max(tokens, key=len)`), `768`) is returned. Defaults to False.
 
         Returns:
             A Tensor, containing the hidden states of the last layer in `self.model`, which
             corresponds to a contextualized token embedding for each token in `text` if `only_cls`
-            is False, otherwise a tensor of shape (len(tokens) x 768) corresponding to the hidden
+            is False, otherwise a tensor of shape (`len(tokens)`, `768`) corresponding to the hidden
             state of the last layer in `self.model` for the special sentence classification token
             (`CLS`).
         """
-        indexed_tokens, attention_masks, orig_to_bert_tok_map = self.process_tokenized_input(tokens)
+        indexed_tokens, attention_masks, orig_to_bert_tok_map = \
+            self.process_tokenized_input(tokens)
 
         # Predict hidden states features for each layer
         with torch.no_grad():
@@ -82,7 +86,7 @@ class BERT(object):
         and returns a three-tuple of token indices, attention masks and an original token to BERT
         token map. The token indices and attention masks can be used for inference with BERT. The
         original token to BERT token map is a determinisitc mapping for each token in `tokens`
-        to the returned, token indices (note this is required as the tokenization process creates
+        to the returned token indices (this is required as the tokenization process creates
         sub-tokens).
 
         Returns:
@@ -95,11 +99,11 @@ class BERT(object):
         max_sent = len(max(bert_tokens, key=len))
         bert_tokens = [sent + [PAD] * (max_sent - len(sent)) for sent in bert_tokens]
 
-        # Generate attention masks for pad values
-        attention_masks = [[int(token == PAD) for token in sent] for sent in bert_tokens]
-
         # Convert token to vocabulary indices
         indexed_tokens = [self.tokenizer.convert_tokens_to_ids(sent) for sent in bert_tokens]
+
+        # Generate attention masks for pad values
+        attention_masks = [[float(idx > 0) for idx in sent] for sent in indexed_tokens]
 
         # Convert inputs to PyTorch tensors, put them on same device as model
         indexed_tokens = torch.tensor(indexed_tokens).to(self.device)
@@ -148,42 +152,49 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, batch_size=1, n_rgcn_layers=7, rgcn_size=768, n_rgcn_bases=10, nlp=None):
+    def __init__(self, nlp=None, dropout_rate=0.2, n_rgcn_layers=3, n_rels=4, rgcn_size=128,
+                 n_rgcn_bases=2, **kwargs):
         super().__init__()
+        # TODO (John): This function is called multiple times. Find way to call it once.
+        self.device, _ = get_device()
 
-        # an object for processing natural language
+        # An object for processing natural language
         self.nlp = nlp if nlp else spacy.load(SPACY_MODEL)
 
         # BERT instance associated with this model
         self.bert = BERT()
 
-        # hyperparameters of the model
-        self.batch_size = batch_size
+        # Hyperparameters of the model
+        self.dropout_rate = dropout_rate
+
         self.n_rgcn_layers = n_rgcn_layers
+        self.n_rels = n_rels
         self.rgcn_size = rgcn_size
-        self.n_rgcn_bases = n_rgcn_bases  # TODO: figure out a good number for this, 10 is a guess
+        self.n_rgcn_bases = n_rgcn_bases
 
-        # layers of the model
-        self.fc = nn.Linear(1536, self.rgcn_size)
+        # Layers of the model
+        self.fc_1 = nn.Linear(1536, 786)
+        self.fc_2 = nn.Linear(786, self.rgcn_size)
+        self.leaky_relu = nn.LeakyReLU()
+        self.dropout = nn.Dropout(dropout_rate)
 
-        # Instantiate R-GCN layers
-        self.rgcn_layers = []
-        for _ in range(self.n_rgcn_layers):
-            self.rgcn_layers.append(RGCNConv(self.rgcn_size, self.rgcn_size, 4, self.n_rgcn_bases))
+        self.rgcn_layer = RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases)
 
-        # Add R-GCN layers to model
-        for i, layer in enumerate(self.rgcn_layers):
-            self.add_module('RGCN_{}'.format(i), layer)
+        self.fc_3 = nn.Linear(self.rgcn_size + 768, 256)
+        self.fc_4 = nn.Linear(256, 128)
+        self.fc_5 = nn.Linear(128, 1)
 
-        # Final affine transform
-        self.fc_logits = nn.Linear(self.rgcn_size + 768, 1)
+        self.log_softmax = nn.LogSoftmax(dim=0)
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     def encode_query(self, query):
         """Encodes a query (`query`) using BERT (`self.bert`).
 
         Reorganizes the query into a subject-verb statment and embeds it using the
         loaded and pre-trained BERT model (`self.bert`). The embedding assigned to the [CLS] token
-        (`constants.CLS`) by BERT is taken as the encoded query.
+        by BERT is taken as the encoded query.
 
         Args:
             query (str): A string representing the input query from Wiki- or MedHop.
@@ -233,7 +244,10 @@ class TransformerGCNQA(nn.Module):
 
         # Push concatenated query and mention encodings through fc layer followed by leaky ReLU
         # activation to get our query_aware_mention_encoding
-        query_aware_mention_encoding = nn.LeakyReLU(self.fc_1(concat_encodings))
+        query_aware_mention_encoding = self.leaky_relu(self.fc_1(concat_encodings))
+        query_aware_mention_encoding = self.dropout(query_aware_mention_encoding)
+        query_aware_mention_encoding = self.leaky_relu(self.fc_2(query_aware_mention_encoding))
+        query_aware_mention_encoding = self.dropout(query_aware_mention_encoding)
 
         return query_aware_mention_encoding
 
@@ -259,39 +273,45 @@ class TransformerGCNQA(nn.Module):
         """
         encoded_query = self.encode_query(query)
 
-        query_aware_mentions = self.encode_query_aware_mentions(encoded_query, encoded_mention)
-
-        x = self.fc(query_aware_mentions)
+        x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
 
         # Separate `graph` into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
         edge_type = graph[2, :]
 
-        rgcn_layer_outputs = []  # Holds the output feature tensor from each R-GCN layer
-        for layer in self.rgcn_layers:
-            x = layer(x, edge_index, edge_type)
-            # Can add NL activations here if we want
-            rgcn_layer_outputs.append(x)
+        rgcn_layers_sum = torch.zeros_like(x)
+        for _ in range(self.n_rgcn_layers):
+            x = self.rgcn_layer(x, edge_index, edge_type)
+            # TODO (Duncan): Can add NL activations here if we want
+            rgcn_layers_sum += x
 
-        # Sum outputs from each R-GCN layer
-        x = torch.sum(torch.stack(rgcn_layer_outputs), dim=0)  # N x self.rgcn_size
+        x = rgcn_layers_sum
 
         # Concatenate summed R-GCN output with query
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
 
-        logits = self.fc_logits(x_query_cat)  # N x 1
+        # Affine transformations
+        logits = self.fc_3(x_query_cat)
+        logits = self.dropout(logits)
+        logits = self.fc_4(logits)
+        logits = self.dropout(logits)
+        logits = self.fc_5(logits)  # N x 1
+        logits = self.dropout(logits)
 
         # Compute the masked softmax based on available candidates
-        masked_softmax = torch.zeros(len(candidate_indices))
+        masked_max = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
-            logits_masked_max = torch.max(logits[idxs])
-            masked_softmax[i] = torch.exp(logits_masked_max)
-        masked_softmax /= torch.sum(masked_softmax)
+            # Don't compute a likelihood if no instances of candidate
+            if idxs:
+                masked_max[i] = torch.max(logits[idxs])
+
+        masked_softmax = torch.exp(self.log_softmax(masked_max))
 
         # If target is provided compute loss, otherwise return `masked_softmax`
         if target is not None:
             loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), target.view(-1))
-            return loss
+            class_index = torch.argmax(target, 1)
+            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), class_index)
+            return masked_softmax, loss
         else:
             return masked_softmax

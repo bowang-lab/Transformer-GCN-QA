@@ -3,6 +3,9 @@ import os
 from glob import glob
 
 import torch
+from torch.utils import data
+
+from ..dataset import Dataset
 
 # TODO (John): Rewrite this to use googledrivedownloader
 
@@ -62,8 +65,7 @@ def load_preprocessed_wikihop(directory):
     """
     processed_dataset = {}
     encoded_mentions = {}
-    # TODO: Uncomment when os.walk issue is fixed
-    # graphs = {}
+    graphs = {}
     targets = {}
 
     partitions = glob(os.path.join(directory, '*'))
@@ -76,9 +78,8 @@ def load_preprocessed_wikihop(directory):
         encoded_mentions_filepath = os.path.join(partition_filepath, 'encoded_mentions.pt')
         encoded_mentions_split_sizes_filepath = os.path.join(partition_filepath,
                                                              'encoded_mentions_split_sizes.json')
-        # TODO: Uncomment when os.walk issue is fixed
-        # graphs_filepath = os.path.join(partition, 'graphs.pt')
-        # graph_split_sizes_filepath = os.path.join(partition, 'graph_split_sizes.json')
+        graphs_filepath = os.path.join(partition_filepath, 'graphs.pt')
+        graph_split_sizes_filepath = os.path.join(partition_filepath, 'graph_split_sizes.json')
         targets_filepath = os.path.join(partition_filepath, 'targets.pt')
         targets_split_sizes_filepath = os.path.join(partition_filepath, 'targets_split_sizes.json')
 
@@ -87,17 +88,36 @@ def load_preprocessed_wikihop(directory):
             processed_dataset[partition] = json.load(f)
         with open(encoded_mentions_split_sizes_filepath, 'r') as f:
             encoded_mentions_split_sizes = json.load(f)
-        # TODO: Uncomment when os.walk issue is fixed
-        # with open(graph_split_sizes_filepath, 'r') as f:
-        #     graph_split_sizes = json.load(f)
+        with open(graph_split_sizes_filepath, 'r') as f:
+            graph_split_sizes = json.load(f)
         with open(targets_split_sizes_filepath, 'r') as f:
             targets_split_sizes = json.load(f)
 
         encoded_mentions[partition] = \
             torch.split(torch.load(encoded_mentions_filepath), encoded_mentions_split_sizes)
-        # TODO: Uncomment when os.walk issue is fixed
-        # graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes)
+        graphs[partition] = torch.split(torch.load(graphs_filepath), graph_split_sizes, dim=-1)
         targets[partition] = torch.split(torch.load(targets_filepath), targets_split_sizes)
 
-    # TODO: Replace none with `graphs` when os.walk issue is fixed
-    return processed_dataset, encoded_mentions, None, targets
+    return processed_dataset, encoded_mentions, graphs, targets
+
+
+def get_dataloaders(processed_dataset, encoded_mentions, graphs, targets):
+    """Gets dataloaders for given preprocessed Wiki- or MedHop dataset.
+
+    Args:
+        processed_dataset (dict): TODO, see above^!
+        encoded_mentions (dict): TODO, see above^!
+        graphs (dict): TODO, see above^!
+        targets (dict): TODO, see above^!
+
+    Returns:
+        A dictionary containing `DataLoader` objects for each partition in `processed_dataset`.
+    """
+    dataloaders = {}
+    for partition in processed_dataset:
+        shuffle = True if partition == 'train' else False
+
+        dataset = Dataset(encoded_mentions[partition], graphs[partition], targets[partition])
+        dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
+
+    return dataloaders

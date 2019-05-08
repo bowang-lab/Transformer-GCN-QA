@@ -18,9 +18,12 @@ class GraphBuilder():
         self.samples = samples
         self.flat = None  # Flattened current sample
 
-    def build(self):
+    def build(self, complement=False):
         """Wrapper to call all graph building functions. Converts edge-lists
         to coorindate pytorch tensors with relation types.
+
+        Args:
+            complement (bool): Determines whether the complement edges are included.
 
         Returns:
             graphs (torch.Tensor): A 3xN tensor, where N is the sum of the number
@@ -44,7 +47,7 @@ class GraphBuilder():
         graph_split_sizes = []
 
         # Iterate over each training example and build the graph
-        for sample_key, sample in tqdm(self.samples.items()):
+        for sample_key, sample in tqdm(self.samples.items(), dynamic_ncols=True):
             # Only need mention information to build the graph
             sample = sample['mentions']
 
@@ -52,20 +55,23 @@ class GraphBuilder():
             doc_based_edges = self._build_doc_based(sample)
             match_edges = self._build_match(sample)
             coref_edges = self._build_coref(sample)
-            all_edges = doc_based_edges + match_edges + coref_edges
-            comp_edges = self._build_complement(sample, all_edges)
 
-            # Create tensor for each edge specifying relation type
-            rels = torch.LongTensor([0 for _ in range(len(doc_based_edges))] +
-                                    [1 for _ in range(len(match_edges))] +
-                                    [2 for _ in range(len(coref_edges))] +
-                                    [3 for _ in range(len(comp_edges))])
+            edge_list = (doc_based_edges +
+                         match_edges +
+                         coref_edges)
 
-            # Create a coordinate tensor to store edges
-            edge_index = torch.LongTensor(doc_based_edges +
-                                          match_edges +
-                                          coref_edges +
-                                          comp_edges)
+            rel_list = ([0 for _ in range(len(doc_based_edges))] +
+                        [1 for _ in range(len(match_edges))] +
+                        [2 for _ in range(len(coref_edges))])
+
+            if complement:
+                comp_edges = self._build_complement(sample, edge_list)
+                edge_list += comp_edges
+                rel_list += [3 for _ in range(len(comp_edges))]
+
+            edge_index = torch.LongTensor(edge_list)
+            rels = torch.LongTensor(rel_list)
+
             # Check if graph is empty
             if len(edge_index) == 0:
                 warnings.warn('Empty graph encountered in sample {}.'.format(sample_key))
