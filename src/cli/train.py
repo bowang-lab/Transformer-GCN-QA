@@ -57,6 +57,11 @@ if __name__ == '__main__':
                         help='Optional, dimensionality of the R-GCN layers. Defaults to 128.')
     parser.add_argument('--n_rgcn_bases', default=2, type=int, required=False,
                         help='TODO (Duncan).')
+    # Other
+    parser.add_argument('--evaluation_step', default=1, type=int, required=False,
+                        help=('Optional, evaluate model on every evaluation_step number of epochs.'
+                              'E.g. if evaluation_step==2, model is evaluated on every 2nd epoch'
+                              ' Defaults to 1.'))
 
     args = vars(parser.parse_args())
 
