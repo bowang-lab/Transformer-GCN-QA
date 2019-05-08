@@ -56,7 +56,7 @@ class TestBert(object):
         assert expected_orig_to_bert_tok_map == actual_orig_to_bert_tok_map
 
     def test_process_tokenized_input_simple(self, bert):
-        """Asserts that `BERT._process_tokenized_input` returns the expected value for a simple
+        """Asserts that `BERT.process_tokenized_input` returns the expected value for a simple
         input.
         """
         orig_tokens = [
@@ -74,7 +74,7 @@ class TestBert(object):
         ]
 
         (actual_indexed_tokens, actual_attention_masks, actual_orig_to_bert_tok_map) = \
-            bert._process_tokenized_input(orig_tokens)
+            bert.process_tokenized_input(orig_tokens)
 
         # Just check for shape, as token indicies will depend on specific BERT model used
         assert actual_indexed_tokens.shape == (2, 8)
@@ -103,3 +103,30 @@ class TestBert(object):
 
         assert expected_bert_tokens == actual_bert_tokens
         assert actual_orig_to_bert_tok_map == expected_orig_to_bert_tok_map
+
+
+class TestTransformerGCNQA(object):
+    """Collects all unit tests for `model.TransformerGCNQA`, a PyTorch QA model.
+    """
+    def test_init(self, nlp, transformer_gcn_qa):
+        """Asserts that class attributes are as expected after initialization.
+        """
+        assert transformer_gcn_qa.nlp == nlp
+        assert transformer_gcn_qa.dropout_rate == 0.2
+        assert transformer_gcn_qa.n_rgcn_layers == 3
+        assert transformer_gcn_qa.n_rels == 4
+        assert transformer_gcn_qa.rgcn_size == 128
+        assert transformer_gcn_qa.n_rgcn_bases == 2
+
+        # TODO (John): Need tests for attributes not passed to init
+
+    def test_encode_query_shape(self, transformer_gcn_qa):
+        """Asserts that the shape of the tensor returned by `TransformerGCNQA.encode_query` is as
+        expected.
+        """
+        query = "country_of_citizenship farid ahmadi"
+
+        query_encoding = transformer_gcn_qa.encode_query(query)
+
+        # Embedding will depend on specific BERT model used, so just check shape
+        assert query_encoding.shape == (1, 768)

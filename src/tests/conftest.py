@@ -3,6 +3,7 @@ import spacy
 from pkg_resources import resource_filename
 
 from ..models import BERT
+from ..models import TransformerGCNQA
 from ..preprocessor import Preprocessor
 from ..utils.dataset_utils import load_wikihop
 
@@ -43,3 +44,10 @@ def bert():
     bert = BERT()
 
     return bert
+
+
+@pytest.fixture
+def transformer_gcn_qa(nlp):
+    transformer_gcn_qa = TransformerGCNQA(nlp=nlp)
+
+    return transformer_gcn_qa

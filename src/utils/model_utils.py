@@ -86,7 +86,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
         train_loss, train_steps = 0, 0
 
         pbar_descr = f"Epoch: {epoch + 1}/{kwargs['epochs']}"
-        pbar = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr)
+        pbar = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr, dynamic_ncols=True)
 
         batch_idx = 0
 
@@ -129,23 +129,23 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             batch_idx += 1
 
+        free_memory(encoded_mentions, graph, target)
+
         optimizer.zero_grad()
         pbar.close()
-
-        free_memory(encoded_mentions, graph, target)
 
         # Eval loop
         if (epoch + 1) % 1 == 0:
 
             model.eval()
 
-            for partition, dataloader in dataloaders.items():
+            for partition in dataloaders:
 
                 num_correct = 0
                 num_steps = 0
 
                 with torch.no_grad():
-                    for index, encoded_mentions, graph, target in dataloader:
+                    for index, encoded_mentions, graph, target in dataloaders[partition]:
 
                         index = index.item()
                         encoded_mentions = encoded_mentions.to(device)
@@ -157,10 +157,11 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                         encoded_mentions = encoded_mentions.squeeze(0)
                         graph = graph.squeeze(0)
 
-                        if graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                        if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
                             # print(f'Found a large graph of size {graph.shape[-1]}. Skipping.')
                             continue
 
+                        # TODO: Don't do a forward pass on empty graphs, just skip them.
                         query = processed_dataset[partition][index]['query']
                         candidate_indices = processed_dataset[partition][index]['candidate_indices']
 
