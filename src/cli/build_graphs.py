@@ -53,7 +53,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument('-i', '--input', type=str, required=True,
                         help='Path to the preprocessed Wiki- or MedHop dataset.')
-    parser.add_argument('-c', '--complement', action='store_true',
+    parser.add_argument('--complement', action='store_true',
                         help=('Optional, provide this argument if COMPLEMENT edges should be'
                               ' added when building the graph'))
 

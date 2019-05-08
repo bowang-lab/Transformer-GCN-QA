@@ -47,7 +47,7 @@ class GraphBuilder():
         graph_split_sizes = []
 
         # Iterate over each training example and build the graph
-        for sample_key, sample in tqdm(self.samples.items()):
+        for sample_key, sample in tqdm(self.samples.items(), dynamic_ncols=True):
             # Only need mention information to build the graph
             sample = sample['mentions']
 
