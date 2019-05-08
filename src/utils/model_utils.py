@@ -1,5 +1,3 @@
-import gc
-
 import torch
 from tqdm import tqdm
 
@@ -30,7 +28,7 @@ def get_device(model=None):
         n_gpu = torch.cuda.device_count()
         # if model is provided, we place it on the GPU and parallize it (if possible)
         if model:
-            model = model.to(device)
+            model.to(device)
             if n_gpu > 1:
                 model = torch.nn.DataParallel(model)
         model_names = ', '.join([torch.cuda.get_device_name(i) for i in range(n_gpu)])
@@ -39,18 +37,22 @@ def get_device(model=None):
         device = torch.device("cpu")
         print('No GPU available. Using CPU.')
 
-    if model:
-        return device, n_gpu, model
-
     return device, n_gpu
 
 
-# TODO: Check that this actually helps, otherwise chuck it
-def free_memory(*args):
-    for arg in args:
-        del arg
-    gc.collect()
-    torch.cuda.empty_cache()
+def preprocess_query(query):
+    """Preprocesses `query` to look more like natural language.
+
+    Preprocess `query` to look more like natural language by puntuating it with a question mark and
+    rearanging into a subject-verb-object (SVO) topology.
+
+    Args:
+        query (str): Query from Wiki- or Medhop.
+
+    Returns:
+        `query`, punctuated by a question mark and re-arranged into an SVO topology.
+    """
+    return ' '.join(query.split(' ')[1:] + query.split(' ')[0].split('_')).replace('?', '') + '?'
 
 
 # TODO: There is a lot of repeated code between train / dev loops. Encapsulate
@@ -63,7 +65,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
         processed_dataset (dict): TODO.
         dataloaders (dict): TODO.
     """
-    device, n_gpus, model = get_device(model)
+    device, n_gpus = get_device(model)
 
     # Cast to list so that we can index in
     processed_dataset = {partition: list(processed_dataset[partition].values())
@@ -90,6 +92,8 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
         batch_idx = 0
 
+        big_graphs = 0
+
         for index, encoded_mentions, graph, target in pbar:
 
             index = index.item()
@@ -97,14 +101,14 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
             graph = graph.to(device)
             target = target.to(device)
 
+            # Don't train on empty graphs, or graphs to big to fit into memory
+            if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                big_graphs += 1
+                continue
+
             # TODO: This is kind of ugly, maybe the model itself should deal with the batch index?
             encoded_mentions = encoded_mentions.squeeze(0)
             graph = graph.squeeze(0)
-
-            # Don't train on empty graphs or those which exceed some size threshold
-            if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
-                # print(f'Found a large graph of size {graph.shape[-1]}. Skipping.')
-                continue
 
             query = processed_dataset['train'][index]['query']
             candidate_indices = processed_dataset['train'][index]['candidate_indices']
@@ -129,13 +133,13 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             batch_idx += 1
 
-        free_memory(encoded_mentions, graph, target)
+        print(f"Dropped {(big_graphs / len(dataloaders['train'])):.2%} of graphs in train loop.")
 
         optimizer.zero_grad()
         pbar.close()
 
         # Eval loop
-        if (epoch + 1) % 1 == 0:
+        if (epoch + 1) % kwargs['evaluation_step'] == 0:
 
             model.eval()
 
@@ -144,30 +148,35 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                 num_correct = 0
                 num_steps = 0
 
+                big_graphs = 0
+
                 with torch.no_grad():
                     for index, encoded_mentions, graph, target in dataloaders[partition]:
+
+                        num_steps += 1
 
                         index = index.item()
                         encoded_mentions = encoded_mentions.to(device)
                         graph = graph.to(device)
                         target = target.to(device)
 
-                        # TODO: This is kind of ugly, maybe the model itself should deal with the
-                        # batch index?
+                        # For empty graphs or graphs too large to fit into memory
+                        # make a random guess
+                        if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                            big_graphs += 1
+                            pred = torch.randint(0, target.shape[-1], (1,)).item()
+                            if target.squeeze(0)[pred]:
+                                num_correct += 1
+                            continue
+
+                        # TODO: This is ugly, model itself should deal with the batch index?
                         encoded_mentions = encoded_mentions.squeeze(0)
                         graph = graph.squeeze(0)
 
-                        if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
-                            # print(f'Found a large graph of size {graph.shape[-1]}. Skipping.')
-                            continue
-
-                        # TODO: Don't do a forward pass on empty graphs, just skip them.
                         query = processed_dataset[partition][index]['query']
                         candidate_indices = processed_dataset[partition][index]['candidate_indices']
 
                         logits, _ = model(query, candidate_indices, encoded_mentions, graph, target)
-
-                        num_steps += 1
 
                         pred = torch.argmax(logits).item()
                         if target.squeeze(0)[pred]:
@@ -183,7 +192,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
                 print(f'{partition.title()} accuracy: {accuracy:.2%}')
 
-        free_memory(encoded_mentions, graph, target)
+                print(f'Dropped {(big_graphs / len(dataloaders[partition])):.2%} of graphs in eval loop.')
 
     print(f'Best dev accuracy was {best_dev_acc:.2%} on epoch: {best_dev_epoch}')
 
