@@ -73,7 +73,7 @@ class TestBert(object):
             [1, 2, 3, 4, 5]
         ]
 
-        (actual_indexed_tokens, actual_attention_masks, actual_orig_to_bert_tok_map) = \
+        (actual_indexed_tokens, actual_orig_to_bert_tok_map, actual_attention_masks) = \
             bert.process_tokenized_input(orig_tokens)
 
         # Just check for shape, as token indicies will depend on specific BERT model used
