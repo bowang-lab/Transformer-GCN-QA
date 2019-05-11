@@ -35,9 +35,11 @@ class BERT(object):
         # Load pre-trained model & tokenizer (vocabulary)
         self.tokenizer = BertTokenizer.from_pretrained(pretrained_model)
         self.model = BertModel.from_pretrained(pretrained_model)
+        # This model will always be used for inference
+        self.model.eval()
 
         # Place the model on a CUDA device if avaliable
-        self.device, _, self.model = model_utils.get_device(self.model)
+        self.device, _, = model_utils.get_device(self.model)
 
     def predict_on_tokens(self, tokens, only_cls=False):
         """Uses `self.tokenizer` and `self.model` to run a prediction step on `tokens`.
@@ -52,7 +54,7 @@ class BERT(object):
             tokens (list): List of lists containing tokenized sentences.
             only_cls (bool): If True, a tensor of shape (`len(tokens)`, `768`) is returned,
                 corresponding to the output of the final layer of BERT on the special sentence
-                classification token (`CLS`) for each sentence in `tokens`. This can be thought of
+                classification token ('[CLS]') for each sentence in `tokens`. This can be thought of
                 as a summary of the input sentence. Otherwise, a tensor of the shape
                 (`len(tokens)`, `max(tokens, key=len)`), `768`) is returned. Defaults to False.
 
@@ -61,9 +63,9 @@ class BERT(object):
             corresponds to a contextualized token embedding for each token in `text` if `only_cls`
             is False, otherwise a tensor of shape (`len(tokens)`, `768`) corresponding to the hidden
             state of the last layer in `self.model` for the special sentence classification token
-            (`CLS`).
+            ('[CLS]').
         """
-        indexed_tokens, attention_masks, orig_to_bert_tok_map = \
+        indexed_tokens, orig_to_bert_tok_map, attention_masks = \
             self.process_tokenized_input(tokens)
 
         # Predict hidden states features for each layer
@@ -82,15 +84,15 @@ class BERT(object):
     def process_tokenized_input(self, tokens):
         """Processes tokenized sentences (`tokens`) for inference with BERT.
 
-        Given `tokens`, a list of list representing tokenized sentences, processes the tokens
-        and returns a three-tuple of token indices, attention masks and an original token to BERT
-        token map. The token indices and attention masks can be used for inference with BERT. The
-        original token to BERT token map is a determinisitc mapping for each token in `tokens`
-        to the returned token indices (this is required as the tokenization process creates
-        sub-tokens).
+        Returns a three-tuple of token indices, attention masks and an
+        original token to BERT token map. The token indices and attention masks can be used for
+        inference with BERT. The original token to BERT token map is a determinisitc mapping for
+        each token in `tokens` to the returned token indices (this is required as the tokenization
+        process creates sub-tokens).
 
         Returns:
-            A three-tuple of token indices, attention masks, and a original token to BERT token map.
+            A three-tuple of token indices, an original token to BERT token map, and
+            attention masks.
         """
         # Tokenize input
         bert_tokens, orig_to_bert_tok_map = self._wordpiece_tokenization(tokens)
@@ -101,18 +103,13 @@ class BERT(object):
 
         # Convert token to vocabulary indices
         indexed_tokens = [self.tokenizer.convert_tokens_to_ids(sent) for sent in bert_tokens]
+        indexed_tokens = torch.tensor(indexed_tokens).to(self.device)
 
         # Generate attention masks for pad values
         attention_masks = [[float(idx > 0) for idx in sent] for sent in indexed_tokens]
-
-        # Convert inputs to PyTorch tensors, put them on same device as model
-        indexed_tokens = torch.tensor(indexed_tokens).to(self.device)
         attention_masks = torch.tensor(attention_masks).to(self.device)
 
-        # Sanity check
-        assert indexed_tokens.shape == attention_masks.shape
-
-        return indexed_tokens, attention_masks, orig_to_bert_tok_map
+        return indexed_tokens, orig_to_bert_tok_map, attention_masks
 
     def _wordpiece_tokenization(self, orig_tokens):
         """WordPiece tokenize pre-tokenized text (`orig_tokens`) for inference with BERT.
@@ -152,17 +149,23 @@ class TransformerGCNQA(nn.Module):
         nlp (spacy.lang): Optional, SpaCy language model. If None, loads `constants.SPACY_MODEL`.
             Defaults to None.
     """
-    def __init__(self, nlp=None, dropout_rate=0.2, n_rgcn_layers=3, n_rels=4, rgcn_size=128,
+    def __init__(self,
+                 nlp=None,
+                 pretrained_bert_model=PRETRAINED_BERT_MODEL,
+                 dropout_rate=0.2,
+                 n_rgcn_layers=3,
+                 n_rels=3,
+                 rgcn_size=512,
                  n_rgcn_bases=2, **kwargs):
         super().__init__()
         # TODO (John): This function is called multiple times. Find way to call it once.
-        self.device, _ = get_device()
+        self.device, _ = get_device(self)
 
         # An object for processing natural language
         self.nlp = nlp if nlp else spacy.load(SPACY_MODEL)
 
         # BERT instance associated with this model
-        self.bert = BERT()
+        self.bert = BERT(pretrained_model=pretrained_bert_model)
 
         # Hyperparameters of the model
         self.dropout_rate = dropout_rate
@@ -202,21 +205,12 @@ class TransformerGCNQA(nn.Module):
         Returns:
             A tensor of size 768 containing the encoded query.
         """
-        # Reorganize query into a subject-verb arrangement
-        query_sv = ' '.join(query.split(' ')[1:] + query.split(' ')[0].split('_'))
-
-        # Get everything we need for inference with BERT
-        indexed_tokens, attention_masks, _ = \
-            self.bert.process_tokenized_input([[token.text for token in self.nlp(query_sv)]])
+        # Preprocess query to look more like natural language and tokenize
+        query_svo = model_utils.preprocess_query(query)
+        tokenized_query_svo = [token.text for token in self.nlp(query_svo)]
 
         # Push the query through BERT
-        query_encoding, _ = self.bert.model(indexed_tokens,
-                                            token_type_ids=torch.zeros_like(indexed_tokens),
-                                            attention_mask=attention_masks,
-                                            output_all_encoded_layers=False)
-
-        # Use the embedding assigned to the [CLS] token as the encoded query
-        query_encoding = query_encoding.squeeze(0)[0, :]
+        query_encoding, _ = self.bert.predict_on_tokens([tokenized_query_svo], only_cls=True)
 
         return query_encoding
 
@@ -275,7 +269,7 @@ class TransformerGCNQA(nn.Module):
 
         x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
 
-        # Separate `graph` into edge tensor and edge relation type tensor
+        # Separate graph into edge tensor and edge relation type tensor
         edge_index = graph[[0, 1], :]
         edge_type = graph[2, :]
 
@@ -295,13 +289,12 @@ class TransformerGCNQA(nn.Module):
         logits = self.dropout(logits)
         logits = self.fc_4(logits)
         logits = self.dropout(logits)
-        logits = self.fc_5(logits)  # N x 1
-        logits = self.dropout(logits)
+        logits = self.fc_5(logits)
+        logits = self.dropout(logits)  # N x 1, where N = # of candidates
 
         # Compute the masked softmax based on available candidates
         masked_max = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
-            # Don't compute a likelihood if no instances of candidate
             if idxs:
                 masked_max[i] = torch.max(logits[idxs])
 

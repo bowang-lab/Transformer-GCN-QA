@@ -2,6 +2,7 @@ import pytest
 import spacy
 from pkg_resources import resource_filename
 
+from ..constants import SPACY_MODEL
 from ..models import BERT
 from ..models import TransformerGCNQA
 from ..preprocessor import Preprocessor
@@ -24,7 +25,7 @@ def dataset():
 def nlp():
     """Returns a loaded SpaCy model.
     """
-    nlp = spacy.load('en_core_web_sm')
+    nlp = spacy.load(SPACY_MODEL)
 
     return nlp
 

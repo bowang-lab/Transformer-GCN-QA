@@ -74,7 +74,6 @@ class GraphBuilder():
 
             # Check if graph is empty
             if len(edge_index) == 0:
-                warnings.warn('Empty graph encountered in sample {}.'.format(sample_key))
                 graphs.append(edge_index)
                 graph_split_sizes.append(0)
             else:

@@ -27,6 +27,9 @@ def main(**kwargs):
 
     for partition_filepath in partitions:
 
+        partition = os.path.basename(partition_filepath)
+        print("Processing partition: '{}'...".format(partition))
+
         # Load the only file we need for graph building
         processed_dataset_filepath = os.path.join(partition_filepath, 'processed_dataset.json')
 
@@ -36,6 +39,11 @@ def main(**kwargs):
         # Build the graphs
         graph_builder = GraphBuilder(processed_dataset)
         graphs, graph_split_sizes = graph_builder.build(complement=kwargs['complement'])
+
+        dropped = sum([1 for graph in graph_split_sizes if graph == 0])
+        n_graphs = len(graph_split_sizes)
+
+        print(f'Found {dropped}/{n_graphs} ({(dropped / n_graphs):.2%}) empty graphs.')
 
         # Save graphs and their chunk sizes
         graphs_filepath = os.path.join(partition_filepath, 'graphs.pt')

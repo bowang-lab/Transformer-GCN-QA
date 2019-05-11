@@ -115,9 +115,9 @@ def get_dataloaders(processed_dataset, encoded_mentions, graphs, targets):
     """
     dataloaders = {}
     for partition in processed_dataset:
-        shuffle = True if partition == 'train' else False
-
         dataset = Dataset(encoded_mentions[partition], graphs[partition], targets[partition])
+
+        shuffle = partition == 'train'
         dataloaders[partition] = data.DataLoader(dataset, shuffle=shuffle)
 
     return dataloaders
