@@ -1,5 +1,7 @@
 import pytest
 import torch
+from pytorch_pretrained_bert import BertModel
+from pytorch_pretrained_bert import BertTokenizer
 
 from ..constants import CLS
 from ..constants import SEP
@@ -9,6 +11,15 @@ from ..models import BERT
 class TestBert(object):
     """Collects all unit tests for `model.BERT`, a PyTorch implementation of BERT.
     """
+    def test_init(self, bert):
+        """Asserts that class attributes are as expected after initialization.
+        """
+        assert isinstance(bert.tokenizer, BertTokenizer)
+        assert isinstance(bert.model, BertModel)
+        assert bert.model.eval
+
+        assert bert.device.type == 'cpu'
+
     def test_invalid_pretrained_model_value_error(self):
         """Asserts that `BERT` throws a ValueError when an invalid value for `pretrained_model` is
         passed."""
