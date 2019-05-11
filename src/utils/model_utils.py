@@ -65,7 +65,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
         processed_dataset (dict): TODO.
         dataloaders (dict): TODO.
     """
-    device, n_gpus = get_device(model)
+    device, _ = get_device(model)
 
     # Cast to list so that we can index in
     processed_dataset = {partition: list(processed_dataset[partition].values())
@@ -92,8 +92,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
         batch_idx = 0
 
-        big_graphs = 0
-
         for index, encoded_mentions, graph, target in pbar:
 
             index = index.item()
@@ -103,7 +101,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             # Don't train on empty graphs, or graphs to big to fit into memory
             if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
-                big_graphs += 1
                 continue
 
             # TODO: This is kind of ugly, maybe the model itself should deal with the batch index?
@@ -133,8 +130,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             batch_idx += 1
 
-        print(f"Dropped {(big_graphs / len(dataloaders['train'])):.2%} of graphs in train loop.")
-
         optimizer.zero_grad()
         pbar.close()
 
@@ -147,8 +142,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
                 num_correct = 0
                 num_steps = 0
-
-                big_graphs = 0
 
                 with torch.no_grad():
                     for index, encoded_mentions, graph, target in dataloaders[partition]:
@@ -163,7 +156,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                         # For empty graphs or graphs too large to fit into memory
                         # make a random guess
                         if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
-                            big_graphs += 1
                             pred = torch.randint(0, target.shape[-1], (1,)).item()
                             if target.squeeze(0)[pred]:
                                 num_correct += 1
@@ -191,8 +183,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                     best_dev_epoch = epoch
 
                 print(f'{partition.title()} accuracy: {accuracy:.2%}')
-
-                print(f'Dropped {(big_graphs / len(dataloaders[partition])):.2%} of graphs in eval loop.')
 
     print(f'Best dev accuracy was {best_dev_acc:.2%} on epoch: {best_dev_epoch}')
 
