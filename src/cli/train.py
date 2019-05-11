@@ -7,11 +7,11 @@ import argparse
 
 from torch.optim import Adam
 
-from ..constants import TRAIN_SIZE_THRESHOLD
 from ..models import TransformerGCNQA
 from ..utils.dataset_utils import get_dataloaders
 from ..utils.dataset_utils import load_preprocessed_wikihop
-from ..utils.model_utils import train
+from ..utils.train_utils import train
+from ..utils.train_utils import warn_about_big_graphs
 
 
 def main(**kwargs):
@@ -27,11 +27,8 @@ def main(**kwargs):
 
     dataloaders = get_dataloaders(processed_dataset, encoded_mentions, graphs, targets)
 
-    # Warn user about how many graphs are dropped`
-    for partition in dataloaders:
-        big_graphs = sum([1 for _, _, graph, _ in dataloaders[partition]
-                          if graph.shape[-1] == 0 or graph.shape[-1] > TRAIN_SIZE_THRESHOLD])
-        print(f"Dropped {(big_graphs / len(dataloaders[partition])):.2%} of graphs from partition {partition}")
+    # Warn user with number of empty and big graphs
+    warn_about_big_graphs(dataloaders)
 
     train(model, optimizer, processed_dataset, dataloaders, **kwargs)
 
