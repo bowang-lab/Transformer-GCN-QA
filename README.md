@@ -7,7 +7,7 @@ A Q/A architecture based on transformers and GCNs.
 
 ## Installation
 
-This package requires `python>=3.7` (as we depend on `dict` to retain insertion order) and CUDA 10.0. There are serveral dependencies not in the `setup.py` that you will need to install before installing this package. 
+This package requires `python>=3.7` (as we depend on `dict` to retain insertion order) and CUDA 10.0. There are several dependencies not in the `setup.py` that you will need to install before installing this package. 
 
 First, it is highly recommended that you create a virtual environment. For example, using `conda`
 
@@ -34,7 +34,7 @@ Finally, install this package and its remaining dependencies straight from GitHu
 (transformer-gcn-qa) $ pip install git+https://github.com/berc-uoft/Transformer-GCN-QA.git
 ```
 
-or install by cloning the repository
+or install by cloning this repository
 
 ```
 (transformer-gcn-qa) $ git clone https://github.com/berc-uoft/Transformer-GCN-QA.git
@@ -55,13 +55,37 @@ and then using either `pip`
 
 ### Install with development requirements
 
-To run the test suite, you will want to install with
+To run the test suite (or use [TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard)), you will want to install with
 
 ```
 (transformer-gcn-qa) $ pip install -e .[dev]
 ```
 
 ## Usage
+
+### Quickstart
+
+Download Wiki- or MedHop [here](https://qangaroo.cs.ucl.ac.uk/), and then preprocess it with
+
+```
+python -m src.cli.preprocess_wikihop -i path/to/wiki/or/medhop -o path/to/preprocessed/wiki/or/medhop
+```
+
+> Note, this can take up to 12 hours to complete.
+
+Then build the graphs used during the online training step
+
+```
+python -m src.cli.build_graphs -i path/to/preprocessed/wiki/or/medhop
+```
+
+Finally, to train the model
+
+```
+python -m src.cli.train -i path/to/preprocessed/wiki/or/medhop
+```
+
+See below for more detailed usage instructions.
 
 ### Classes
 
@@ -82,13 +106,13 @@ from src.preprocessor import Preprocessor
 from src.models import BERT
 
 preprocessor = Preprocessor()
-dataset = load_wikihop('../path/to/dataset')
+dataset = load_wikihop('path/to/wiki/or/medhop')
 model = BERT()
 
-processed_candidates, encoded_mentions, encoded_mentions_split_sizes, candidate_idxs, targets = preprocessor.transform(dataset, model)
+processed_dataset, encoded_mentions, encoded_mentions_split_sizes, targets, targets_split_sizes = preprocessor.transform(dataset, model)
 ```
 
-The returned tuple contains 5 dictionaries, keyed by dataset partition, with everything we need for graph construction and training. See `help(Preprocessor.transform)` for more information about each object
+The returned tuple contains 5 dictionaries, keyed by dataset partition, with everything we need for graph construction and training. See `help(Preprocessor.transform)` for more information about each object.
 
 #### `BuildGraph`
 
@@ -118,19 +142,29 @@ Command line interfaces are provided for convenience. Pass `--help` to any scrip
 
 #### `preprocess_wikihop.py`
 
-This script will take the Wiki- or MedHop dataset and save a pickle to disk containing everything we need to assemble the graph
+This script will take the Wiki- or MedHop dataset and save to disk everything we need to assemble the graph
 
 ```
-(transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop -i path/to/dataset -o path/to/output
+(transformer-gcn-qa) $ python -m src.cli.preprocess_wikihop -i path/to/wiki/or/medhop -o path/to/output
 ```
 
-#### `build_graph.py`
+#### `build_graphs.py`
 
-This script will take the processed Wiki- or MedHop pickle and save the graph tensor and size indices to disk, which are then used as inputs to the model.
+This script will take the pre-processed Wiki- or MedHop dataset and create/save the graph tensors to disk, which are used as inputs to the model.
 
 ```
-(transformer-gcn-qa) $ python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/output/
+(transformer-gcn-qa) $ python -m src.cli.build_graph -i path/to/processed/dataset -o path/to/preprocessed/wiki/or/medhop
 ```
+
+#### `train.py`
+
+This script will train a model on a pre-processed Wiki- or MedHop dataset.
+
+```
+(transformer-gcn-qa) $ python -m src.cli.train -i path/to/preprocessed/wiki/or/medhop
+```
+
+To monitor performance with TensorBoard, first, make sure you have installed with dev dependencies (`pip install -e .[dev]`). During a training session, call `tensorboard --logdir=runs` and then access port `6006` in your browser.
 
 ## Troubleshooting
 
