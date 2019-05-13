@@ -41,6 +41,7 @@ setuptools.setup(
         "dev": [
             "pytest",
             "tox",
+            "tb-nightly",  # Until 1.14 moves to the release channel"
         ]
     },
     zip_safe=False,
