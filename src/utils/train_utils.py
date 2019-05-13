@@ -1,7 +1,9 @@
 import torch
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
 from ..constants import TRAIN_SIZE_THRESHOLD
 from .model_utils import get_device
-from tqdm import tqdm
 
 
 def warn_about_big_graphs(dataloaders):
@@ -27,12 +29,15 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
     """Trains an instance of `model`.
 
     Args:
-        model (): TODO.
-        optimizer (torch.optim): TODO.
+        model (TransformerGCNQA): The TransformerGCNQA model which subclasses `nn.Module`.
+        optimizer (torch.optim): Torch optimizer to train `model` with.
         processed_dataset (dict): TODO.
         dataloaders (dict): TODO.
     """
     device, _ = get_device(model)
+
+    # For logging to TensorBoard
+    writer = SummaryWriter()
 
     # Cast to list so that we can index in
     processed_dataset = {partition: list(processed_dataset[partition].values())
@@ -42,6 +47,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
     evaluation_scores = {partition: {epoch: None for epoch in range(1, kwargs['epochs'] + 1)}
                          for partition in processed_dataset}
 
+    # Track best dev accuracy
     best_dev_acc = 0
     best_dev_epoch = 0
 
@@ -52,14 +58,16 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
         optimizer.zero_grad()
 
-        train_loss, train_steps = 0, 0
+        # Global count for number of steps taken in train loop
+        batch_idx = 0
+
+        train_loss = 0
+        train_steps = 0
 
         pbar_descr = f"Epoch: {epoch + 1}/{kwargs['epochs']}"
         pbar = tqdm(dataloaders['train'], unit='batch', desc=pbar_descr, dynamic_ncols=True)
 
-        batch_idx = 0
-
-        for index, encoded_mentions, graph, target in pbar:
+        for i, (index, encoded_mentions, graph, target) in enumerate(pbar):
 
             index = index.item()
             encoded_mentions = encoded_mentions.to(device)
@@ -83,11 +91,13 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             train_loss += loss.item()
 
-            if (batch_idx + 1) % kwargs['batch_size'] == 0:
+            # Propogate grads if we have accu batch_size num of them or this is the last batch
+            if (batch_idx + 1) % kwargs['batch_size'] == 0 or i == len(dataloaders['train']):
                 # Gradient clipping
                 if kwargs['grad_norm']:
                     torch.nn.utils.clip_grad_norm_(parameters=model.parameters(),
                                                    max_norm=kwargs['grad_norm'])
+
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -97,7 +107,6 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             batch_idx += 1
 
-        optimizer.zero_grad()
         pbar.close()
 
         # Eval loop
@@ -107,7 +116,8 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
             for partition in dataloaders:
 
-                num_correct = 0
+                eval_loss = 0
+                eval_acc = 0
                 num_steps = 0
 
                 with torch.no_grad():
@@ -125,7 +135,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                         if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
                             pred = torch.randint(0, target.shape[-1], (1,)).item()
                             if target.squeeze(0)[pred]:
-                                num_correct += 1
+                                eval_acc += 1
                             continue
 
                         # TODO: This is ugly, model itself should deal with the batch index?
@@ -135,22 +145,33 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                         query = processed_dataset[partition][index]['query']
                         candidate_indices = processed_dataset[partition][index]['candidate_indices']
 
-                        logits, _ = model(query, candidate_indices, encoded_mentions, graph, target)
+                        logits, loss = \
+                            model(query, candidate_indices, encoded_mentions, graph, target)
+
+                        eval_loss += loss.item()
 
                         pred = torch.argmax(logits).item()
                         if target.squeeze(0)[pred]:
-                            num_correct += 1
+                            eval_acc += 1
 
-                accuracy = num_correct / num_steps
+                eval_loss /= num_steps
+                eval_acc /= num_steps
 
-                evaluation_scores[partition][epoch] = accuracy
+                evaluation_scores[partition][epoch] = {'eval_loss': eval_loss, 'eval_acc': eval_acc}
 
-                if partition == 'dev' and accuracy > best_dev_acc:
-                    best_dev_acc = accuracy
-                    best_dev_epoch = epoch
+                writer.add_scalar(f'{partition}_loss', eval_loss, epoch + 1)
+                writer.add_scalar(f'{partition}_accuracy', eval_acc, epoch + 1)
 
-                print(f'{partition.title()} accuracy: {accuracy:.2%}')
+                if partition == 'dev' and eval_acc > best_dev_acc:
+                    best_dev_acc = eval_acc
+                    best_dev_epoch = epoch + 1
+
+                    writer.add_scalar('best_dev_acc', best_dev_acc, best_dev_epoch)
+
+                print(f'{partition.title()} accuracy: {eval_acc:.2%}')
 
     print(f'Best dev accuracy was {best_dev_acc:.2%} on epoch: {best_dev_epoch}')
+
+    writer.close()
 
     return evaluation_scores
