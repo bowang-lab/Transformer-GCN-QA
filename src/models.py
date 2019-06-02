@@ -9,7 +9,6 @@ from torch_geometric.nn import RGCNConv
 from .constants import CLS
 from .constants import PAD
 from .constants import PRETRAINED_BERT_MODEL
-from .constants import PRETRAINED_BERT_MODELS
 from .constants import SEP
 from .constants import SPACY_MODEL
 from .utils import model_utils
@@ -27,13 +26,8 @@ class BERT(object):
         ValueError if `pretrained_model` not in `PRETRAINED_BERT_MODELS`.
     """
     def __init__(self, pretrained_model=PRETRAINED_BERT_MODEL):
-        if pretrained_model not in PRETRAINED_BERT_MODELS:
-            err_msg = ("Expected `pretrained_model` to be one of {}."
-                       " Got: {}".format(', '.join(PRETRAINED_BERT_MODELS), pretrained_model))
-            raise ValueError(err_msg)
-
         # Load pre-trained model & tokenizer (vocabulary)
-        self.tokenizer = BertTokenizer.from_pretrained(pretrained_model)
+        self.tokenizer = BertTokenizer.from_pretrained(pretrained_model, do_lower_case=True)
         self.model = BertModel.from_pretrained(pretrained_model)
         # This model will always be used for inference
         self.model.eval()
@@ -41,45 +35,38 @@ class BERT(object):
         # Place the model on a CUDA device if avaliable
         self.device, _, = model_utils.get_device(self.model)
 
-    def predict_on_tokens(self, tokens, only_cls=False):
+    def predict_on_tokens(self, tokens):
         """Uses `self.tokenizer` and `self.model` to run a prediction step on `tokens`.
 
         Using the pre-trained BERT tokenizer (`self.tokenizer`) and the pre-trained BERT model
-        (`self.model), runs a prediction step on a list of lists representing tokenized sentences
-        (`tokens`). Returns a tensor containing the hidden state of the last layer in
-        `self.model`, which corresponds to a contextualized token embedding for each token in
-        `text`.
+        (`self.model`), runs a prediction step on a list of lists representing tokenized sentences
+        (`tokens`). Returns a three tuple of:
+
+            - `pooled_output`: the tensor representing the sequence classification token (`CLS`)
+            - `encoded_output`: the tensor containing the hidden state of the last layer in
+              `self.model`, which corresponds to a contextualized token embedding for each token in
+              `text`.
+            - `orig_to_bert_tok_map`: a list containing a deterministic mapping for each index in
+              `tokens` to an index in the WordPiece tokens that passed to BERT.
 
         Args:
             tokens (list): List of lists containing tokenized sentences.
-            only_cls (bool): If True, a tensor of shape (`len(tokens)`, `768`) is returned,
-                corresponding to the output of the final layer of BERT on the special sentence
-                classification token ('[CLS]') for each sentence in `tokens`. This can be thought of
-                as a summary of the input sentence. Otherwise, a tensor of the shape
-                (`len(tokens)`, `max(tokens, key=len)`), `768`) is returned. Defaults to False.
 
         Returns:
-            A Tensor, containing the hidden states of the last layer in `self.model`, which
-            corresponds to a contextualized token embedding for each token in `text` if `only_cls`
-            is False, otherwise a tensor of shape (`len(tokens)`, `768`) corresponding to the hidden
-            state of the last layer in `self.model` for the special sentence classification token
-            ('[CLS]').
+            A three-tuple containing `pooled_output`, `encoded_output` and `orig_to_bert_tok_map`.
         """
         indexed_tokens, orig_to_bert_tok_map, attention_masks = \
             self.process_tokenized_input(tokens)
 
         # Predict hidden states features for each layer
         with torch.no_grad():
-            encoded_output, _ = self.model(indexed_tokens,
-                                           token_type_ids=torch.zeros_like(indexed_tokens),
-                                           attention_mask=attention_masks,
-                                           output_all_encoded_layers=False)
+            encoded_output, pooled_output = \
+                self.model(indexed_tokens,
+                           token_type_ids=torch.zeros_like(indexed_tokens),
+                           attention_mask=attention_masks,
+                           output_all_encoded_layers=False)
 
-        # If only_cls, return only the embedding from the special classfication token
-        if only_cls:
-            encoded_output = encoded_output[:, 0, :]
-
-        return encoded_output, orig_to_bert_tok_map
+        return pooled_output, encoded_output, orig_to_bert_tok_map
 
     def process_tokenized_input(self, tokens):
         """Processes tokenized sentences (`tokens`) for inference with BERT.
@@ -210,7 +197,7 @@ class TransformerGCNQA(nn.Module):
         tokenized_query_svo = [token.text for token in self.nlp(query_svo)]
 
         # Push the query through BERT
-        query_encoding, _ = self.bert.predict_on_tokens([tokenized_query_svo], only_cls=True)
+        query_encoding, _, _ = self.bert.predict_on_tokens([tokenized_query_svo])
 
         return query_encoding
 

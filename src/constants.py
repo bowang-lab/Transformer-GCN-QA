@@ -4,17 +4,6 @@ SPACY_MODEL = 'en_core_web_lg'
 # Greedyness of NeuralCoref. See here: https://github.com/huggingface/neuralcoref#parameters
 NEURALCOREF_GREEDYNESS = 0.40
 
-# Pre-trained BERT models. See here: https://github.com/huggingface/pytorch-pretrained-BERT
-# for more information.
-PRETRAINED_BERT_MODELS = [
-    'bert-base-uncased',
-    'bert-large-uncased',
-    'bert-base-cased',
-    'bert-large-cased',
-    'bert-base-multilingual-uncased',
-    'bert-base-multilingual-cased',
-    'bert-base-chinese',
-]
 # The default pre-trained BERT model to use
 PRETRAINED_BERT_MODEL = 'bert-base-uncased'
 

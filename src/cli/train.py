@@ -17,10 +17,6 @@ from ..utils.train_utils import warn_about_big_graphs
 def main(**kwargs):
     """Runs a training loop for the `TransformerGCNQA` model.
     """
-    model = TransformerGCNQA(**kwargs)
-
-    optimizer = Adam(model.parameters(), lr=kwargs['learning_rate'])
-
     # Load preprocessed Wiki- or MedHop dataset
     processed_dataset, encoded_mentions, graphs, targets = \
         load_preprocessed_wikihop(kwargs['input'])
@@ -29,6 +25,10 @@ def main(**kwargs):
 
     # Warn user with number of empty and big graphs
     warn_about_big_graphs(dataloaders)
+
+    model = TransformerGCNQA(**kwargs)
+
+    optimizer = Adam(model.parameters(), lr=kwargs['learning_rate'])
 
     train(model, optimizer, processed_dataset, dataloaders, **kwargs)
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
                         help=('Optional, effective batch size achieved with gradient accumulation.'
                               ' Defaults to 32.'))
     parser.add_argument('--dropout_rate', default=0.1, type=float, required=False,
-                        help='Optional, dropout rate. Defaults to 0.2.')
+                        help='Optional, dropout rate. Defaults to 0.1.')
     parser.add_argument('--epochs', default=20, type=int, required=False,
                         help='Optional, number of epochs to train the model for. Defaults to 20.')
     parser.add_argument('--grad_norm', default=0.0, type=float, required=False,
@@ -55,10 +55,10 @@ if __name__ == '__main__':
     # R-GCN
     parser.add_argument('--n_rgcn_layers', default=3, type=int, required=False,
                         help='Optional, number of layers in the R-GCN. Defaults to 3.')
-    parser.add_argument('--n_rels', default=4, type=int, required=False,
+    parser.add_argument('--n_rels', default=3, type=int, required=False,
                         help=('Optional, number of relations in the R-GCN. Set this to 3 if graphs'
                               ' were built with complement=True, otherwise set to 4. Defaults to'
-                              ' 4.'))
+                              ' 3.'))
     parser.add_argument('--rgcn_size', default=128, type=int, required=False,
                         help='Optional, dimensionality of the R-GCN layers. Defaults to 128.')
     parser.add_argument('--n_rgcn_bases', default=2, type=int, required=False,

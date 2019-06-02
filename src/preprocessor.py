@@ -21,13 +21,11 @@ class Preprocessor(object):
         cased (bool): Optional, True if textual data should remain cased, otherwise lower cases it.
             Defaults to False.
     """
-    def __init__(self, nlp=None, cased=False):
+    def __init__(self, nlp=None):
         # SpaCy object for processing natural language
         self.nlp = nlp if nlp else spacy.load(SPACY_MODEL)
         # Adds coref to spaCy pipeline
         neuralcoref.add_to_pipe(self.nlp, greedyness=NEURALCOREF_GREEDYNESS)
-
-        self.cased = cased
 
     def transform(self, dataset, model=None):
         """Extracts `dataset` everything needed for graph construction and training.
@@ -95,14 +93,14 @@ class Preprocessor(object):
                 for example in tqdm(training_examples, dynamic_ncols=True):
 
                     example_id = example['id']
-                    query = example['query']
-                    answer = example['answer']
+                    query = example['query'].lower()
+                    answer = example['answer'].lower()
                     candidates = example['candidates']
 
                     processed_dataset[partition][example_id] = {
                         'mentions': [],
                         'query': query,
-                        'candidate_indices': {candidate: [] for candidate in candidates},
+                        'candidate_indices': {candidate.lower(): [] for candidate in candidates},
                     }
 
                     # One-hot encoding of answer
@@ -171,12 +169,12 @@ class Preprocessor(object):
             tokens.append([])
             # Collect text and character offsets for each token
             for token in sent:
-                token_text = token.text if self.cased else token.text.lower()
+                token_text = token.text.lower()
                 tokens[-1].append(token_text)
                 offsets.append((token.idx, token.idx + len(token.text)))
 
         # Use model to get embeddings for each token across all sents
-        embedded_sents, orig_to_bert_tok_map = model.predict_on_tokens(tokens)
+        _, embedded_sents, orig_to_bert_tok_map = model.predict_on_tokens(tokens)
 
         for embedded_sent, tok_map in zip(embedded_sents, orig_to_bert_tok_map):
             # Retrieve embeddings for original tokens (drop CLS, SEP and PAD tokens)
@@ -283,7 +281,6 @@ class Preprocessor(object):
 
         return processed_candidates, candidate_indices, encoded_mentions, encoded_mention_idx
 
-    # TODO: Should either ignore or not ignore case based off of `self.cased`
     def _find_candidates(self, candidates, supporting_doc):
         """Finds all non-overlapping, case-insensitive matches of `candidates` in `supporting_doc`.
 
