@@ -1,11 +1,9 @@
-import pytest
 import torch
 from pytorch_pretrained_bert import BertModel
 from pytorch_pretrained_bert import BertTokenizer
 
 from ..constants import CLS
 from ..constants import SEP
-from ..models import BERT
 
 
 class TestBert(object):
@@ -20,15 +18,8 @@ class TestBert(object):
 
         assert bert.device.type == 'cpu'
 
-    def test_invalid_pretrained_model_value_error(self):
-        """Asserts that `BERT` throws a ValueError when an invalid value for `pretrained_model` is
-        passed."""
-        with pytest.raises(ValueError):
-            BERT(pretrained_model='this should throw a ValueError!')
-
-    def test_predict_on_tokens_simple_full_sequence(self, bert):
-        """Asserts that `BERT.predict_on_tokens` returns the expected value for a simple
-        input when `only_cls=False`.
+    def test_predict_on_tokens_simple(self, bert):
+        """Asserts that `BERT.predict_on_tokens` returns the expected value for a simple input.
         """
         orig_tokens = [
             ["john", "johanson", "'s",  "house"],
@@ -40,30 +31,11 @@ class TestBert(object):
             [1, 2, 3, 4, 5]
         ]
 
-        actual_endcoded_output, actual_orig_to_bert_tok_map = \
-            bert.predict_on_tokens(orig_tokens, only_cls=False)
+        actual_pooled_output, actual_encoded_output, actual_orig_to_bert_tok_map = \
+            bert.predict_on_tokens(orig_tokens)
 
-        assert actual_endcoded_output.shape == (2, 8, 768)
-        assert expected_orig_to_bert_tok_map == actual_orig_to_bert_tok_map
-
-    def test_predict_on_tokens_simple_only_cls(self, bert):
-        """Asserts that `BERT.predict_on_tokens` returns the expected value for a simple
-        input when `only_cls=True`.
-        """
-        orig_tokens = [
-            ["john", "johanson", "'s",  "house"],
-            ["who", "was", "jim", "henson",  "?"]
-        ]
-
-        expected_orig_to_bert_tok_map = [
-            [1, 2, 4, 6],
-            [1, 2, 3, 4, 5]
-        ]
-
-        actual_endcoded_output, actual_orig_to_bert_tok_map = \
-            bert.predict_on_tokens(orig_tokens, only_cls=True)
-
-        assert actual_endcoded_output.shape == (2, 768)
+        assert actual_pooled_output.shape == (2, 768)
+        assert actual_encoded_output.shape == (2, 8, 768)
         assert expected_orig_to_bert_tok_map == actual_orig_to_bert_tok_map
 
     def test_process_tokenized_input_simple(self, bert):
@@ -113,7 +85,7 @@ class TestBert(object):
         actual_bert_tokens, actual_orig_to_bert_tok_map = bert._wordpiece_tokenization(orig_tokens)
 
         assert expected_bert_tokens == actual_bert_tokens
-        assert actual_orig_to_bert_tok_map == expected_orig_to_bert_tok_map
+        assert expected_orig_to_bert_tok_map == actual_orig_to_bert_tok_map
 
 
 class TestTransformerGCNQA(object):
