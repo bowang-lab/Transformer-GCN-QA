@@ -14,9 +14,20 @@ PATH_TO_DUMMY_DATASET = resource_filename(__name__, 'resources/dummy_dataset')
 # Fixtures
 @pytest.fixture
 def dataset():
-    """Returns a loaded dataset, which is structured like Wiki- or MedHop
+    """Returns a loaded dataset, which is structured like Wiki- or MedHop, with `masked==False` in
+    call to `load_wikihop()`.
     """
     dataset = load_wikihop(PATH_TO_DUMMY_DATASET)
+
+    return dataset
+
+
+@pytest.fixture
+def masked_dataset():
+    """Returns a loaded dataset, which is structured like Wiki- or MedHop, where `masked==True` in
+    call to `load_wikihop()`.
+    """
+    dataset = load_wikihop(PATH_TO_DUMMY_DATASET, masked=True)
 
     return dataset
 

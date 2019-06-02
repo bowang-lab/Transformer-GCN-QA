@@ -10,39 +10,37 @@ from ..dataset import Dataset
 # TODO (John): Rewrite this to use googledrivedownloader
 
 
-def load_wikihop(directory, load_masked=False):
+def load_wikihop(directory, masked=False):
     """Loads the Wiki- or MedHop dataset given at `directory`.
 
     Loads the Wiki- or MedHop dataset given at `directory` and returns a dictionary keyed by
-    partition names: 'train', 'dev', 'train.masked', 'dev.masked'. If `load_masked`, the masked
-    partitions of the dataset are loaded, otherwise, 'train.masked' and 'dev.masked' in the returned
-    dictionary are None.
+    partition names. If `masked`, only the masked partitions of the dataset are loaded
+    ('train.masked', 'dev.masked'). Otherwise, only the unmasked partitions are loaded
+    ('train, 'dev').
 
     Args:
         directory (str): Directory path to the Wiki- or MedHop datasets.
-        load_masked (bool): True if the 'train.masked' and 'dev.masked' partitions of the dataset
-            should be loaded. Defaults to False.
+        masked (bool): If True, only the masked partitions of the dataset are loaded
+            ('train.masked', 'dev.masked'). Otherwise, only the unmasked partitions are loaded
+            ('train, 'dev'). Defaults to False.
 
     Returns:
         A dictionary representing the WikiHop or MedHop dataset at `directory`, keyed by partition
-        names: 'train', 'dev', 'train.masked', 'dev.masked'.
+        names.
 
     References:
         - https://qangaroo.cs.ucl.ac.uk/
     """
-    dataset = {'train': None, 'dev': None, 'train.masked': None, 'dev.masked': None}
+    dataset = {}
 
-    for file in os.listdir(directory):
+    partitions = [p for p in glob(os.path.join(directory, '*'))
+                  # Only load masked partitions if `masked` is True
+                  if ('.masked' in p and masked) or ('.masked' not in p and not masked)]
 
-        filename = os.fsdecode(file)
-        partition = filename.split('.json')[0]
-        filepath = os.path.join(directory, filename)
-
-        if filename.endswith('.json'):
-            # Only load masked partitions if `load_masked` is True
-            if 'masked' not in partition or load_masked:
-                with open(filepath, 'r') as f:
-                    dataset[partition] = json.loads(f.read())
+    for partition in partitions:
+        with open(partition, 'r') as f:
+            partition_key = os.path.splitext(os.path.basename(partition))[0]
+            dataset[partition_key] = json.loads(f.read())
 
     return dataset
 

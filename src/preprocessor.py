@@ -32,7 +32,7 @@ class Preprocessor(object):
 
         For the given Wiki- or MedHop `dataset`, returns a 5-tuple containing everything we need
         for graph construction and training. Each item in the tuple is a dictionary keyed by
-        a dataset partition name (e.g. 'train', 'dev', 'train.masked', 'dev.masked'). The values
+        a dataset partition name (e.g. 'train', 'dev', or 'train.masked', 'dev.masked'). The values
         of these dictionaries are outlined below:
 
             - processed_dataset: A dictionary, keyed by example id, containing all mentions (a
@@ -63,7 +63,7 @@ class Preprocessor(object):
                 `torch.split()` to break `targets` up into individual training examples
 
         Args:
-            dataset (dict): A dictionary keyed by partitions ('train', 'dev', 'train.masked',
+            dataset (dict): A dictionary keyed by partitions ('train', 'dev', or 'train.masked',
                 'dev.masked') representing a loaded Wiki- or MedHop dataset.
             model (Torch.nn): Any model that defines a `predict_on_tokens()` method, which accepts
                 a list containining a tokenized sentence and returns a contextualized embedding for
@@ -80,71 +80,70 @@ class Preprocessor(object):
         targets_split_sizes = {}
 
         for partition, training_examples in dataset.items():
-            if training_examples:
-                print("Processing partition: '{}'...".format(partition))
+            print("Processing partition: '{}'...".format(partition))
 
-                processed_dataset[partition] = {}
+            processed_dataset[partition] = {}
 
-                encoded_mentions[partition] = []
-                encoded_mentions_split_sizes[partition] = []
-                targets[partition] = []
-                targets_split_sizes[partition] = []
+            encoded_mentions[partition] = []
+            encoded_mentions_split_sizes[partition] = []
+            targets[partition] = []
+            targets_split_sizes[partition] = []
 
-                for example in tqdm(training_examples, dynamic_ncols=True):
+            for example in tqdm(training_examples, dynamic_ncols=True):
 
-                    example_id = example['id']
-                    query = example['query'].lower()
-                    answer = example['answer'].lower()
-                    candidates = example['candidates']
+                example_id = example['id']
+                query = example['query'].lower()
+                answer = example['answer'].lower()
+                candidates = example['candidates']
 
-                    processed_dataset[partition][example_id] = {
-                        'mentions': [],
-                        'query': query,
-                        'candidate_indices': {candidate.lower(): [] for candidate in candidates},
-                    }
+                processed_dataset[partition][example_id] = {
+                    'mentions': [],
+                    'query': query,
+                    'candidate_indices': {candidate.lower(): [] for candidate in candidates},
+                }
 
-                    # One-hot encoding of answer
-                    target = [1 if candidate == answer else 0 for candidate in candidates]
-                    targets[partition].append(torch.tensor(target))
-                    targets_split_sizes[partition].append(len(target))
+                # One-hot encoding of answer
+                target = [1 if candidate == answer else 0 for candidate in candidates]
+                targets[partition].append(torch.tensor(target))
+                targets_split_sizes[partition].append(len(target))
 
-                    # Keeps track of the mentions index in encoded_mentions
-                    encoded_mention_idx = 0
+                # Keeps track of the mentions index in encoded_mentions
+                encoded_mention_idx = 0
 
-                    for supporting_doc in example['supports']:
-                        # Process the supporting document (sentence segmentation and tokenization)
-                        doc = self.nlp(supporting_doc)
-                        tokens, offsets, corefs, embeddings = self._process_doc(doc, model)
+                for supporting_doc in example['supports']:
+                    # Process the supporting document (sentence segmentation and tokenization)
+                    doc = self.nlp(supporting_doc)
+                    tokens, offsets, corefs, embeddings = self._process_doc(doc, model)
 
-                        # Get character offsets of matched candidates in supporting docs
-                        candidate_offsets = self._find_candidates(candidates, supporting_doc)
+                    # Get character offsets of matched candidates in supporting docs
+                    candidate_offsets = self._find_candidates(candidates, supporting_doc)
 
-                        # Returns the final data structures for mentions and their encodings
-                        (processed_candidates, candidate_indices, encoded_mentions_,
-                         encoded_mention_idx) = self._process_candidates(
-                             candidate_offsets=candidate_offsets,
-                             supporting_doc=supporting_doc,
-                             tokens=tokens,
-                             offsets=offsets,
-                             corefs=corefs,
-                             embeddings=embeddings,
-                             candidate_indices=processed_dataset[partition][example_id]['candidate_indices'],
-                             encoded_mention_idx=encoded_mention_idx
-                            )
-
-                        processed_dataset[partition][example_id]['mentions'].append(
-                            processed_candidates
+                    # Returns the final data structures for mentions and their encodings
+                    (processed_candidates, candidate_indices, encoded_mentions_,
+                        encoded_mention_idx) = self._process_candidates(
+                            candidate_offsets=candidate_offsets,
+                            supporting_doc=supporting_doc,
+                            tokens=tokens,
+                            offsets=offsets,
+                            corefs=corefs,
+                            embeddings=embeddings,
+                            candidate_indices=processed_dataset[partition][example_id]['candidate_indices'],
+                            encoded_mention_idx=encoded_mention_idx
                         )
-                        processed_dataset[partition][example_id]['candidate_indices'] = \
-                            candidate_indices
-                        encoded_mentions[partition].extend(encoded_mentions_)
 
-                    # Keep track of encoded_mentions chunk sizes
-                    encoded_mentions_split_sizes[partition].append(encoded_mention_idx)
+                    processed_dataset[partition][example_id]['mentions'].append(
+                        processed_candidates
+                    )
+                    processed_dataset[partition][example_id]['candidate_indices'] = \
+                        candidate_indices
+                    encoded_mentions[partition].extend(encoded_mentions_)
 
-                # Return encoded_mentions and targets as tensors
-                encoded_mentions[partition] = torch.cat(encoded_mentions[partition])
-                targets[partition] = torch.cat(targets[partition])
+                # Keep track of encoded_mentions chunk sizes
+                encoded_mentions_split_sizes[partition].append(encoded_mention_idx)
+
+            # Return encoded_mentions and targets as tensors
+            encoded_mentions[partition] = torch.cat(encoded_mentions[partition])
+            targets[partition] = torch.cat(targets[partition])
 
         return (processed_dataset, encoded_mentions, encoded_mentions_split_sizes, targets,
                 targets_split_sizes)
