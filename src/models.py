@@ -174,8 +174,6 @@ class TransformerGCNQA(nn.Module):
         self.fc_4 = nn.Linear(256, 128)
         self.fc_5 = nn.Linear(128, 1)
 
-        self.log_softmax = nn.LogSoftmax(dim=0)
-
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -280,18 +278,16 @@ class TransformerGCNQA(nn.Module):
         logits = self.dropout(logits)  # N x 1, where N = # of candidates
 
         # Compute the masked softmax based on available candidates
-        masked_max = torch.zeros(len(candidate_indices)).to(self.device)
+        masked_logits = torch.zeros(len(candidate_indices)).to(self.device)
         for i, idxs in enumerate(candidate_indices.values()):
             if idxs:
-                masked_max[i] = torch.max(logits[idxs])
+                masked_logits[i] = torch.max(logits[idxs])
 
-        masked_softmax = torch.exp(self.log_softmax(masked_max))
-
-        # If target is provided compute loss, otherwise return `masked_softmax`
+        # If target is provided return loss as well as logits
         if target is not None:
             loss_fct = nn.CrossEntropyLoss()
             class_index = torch.argmax(target, 1)
-            loss = loss_fct(masked_softmax.view(-1, len(candidate_indices)), class_index)
-            return masked_softmax, loss
+            loss = loss_fct(masked_logits.view(-1, len(candidate_indices)), class_index)
+            return masked_logits, loss
         else:
-            return masked_softmax
+            return masked_logits
