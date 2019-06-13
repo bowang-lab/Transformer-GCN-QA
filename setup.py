@@ -31,7 +31,7 @@ setuptools.setup(
         'Multi-hop Question Answering',
     ],
     install_requires=[
-        "spacy>=2.1.3",
+        "spacy>=2.1.4",
         # SpaCy language model, straight from GitHub
         "en_core_web_lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-2.1.0/en_core_web_lg-2.1.0.tar.gz",
         "neuralcoref>=4.0",
@@ -41,7 +41,7 @@ setuptools.setup(
         "dev": [
             "pytest",
             "tox",
-            "tb-nightly",  # Until 1.14 moves to the release channel"
+            "tb-nightly",  # Until 1.14 moves to the release channel
         ]
     },
     zip_safe=False,
