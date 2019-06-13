@@ -274,8 +274,7 @@ class TransformerGCNQA(nn.Module):
         logits = self.dropout(logits)
         logits = self.fc_4(logits)
         logits = self.dropout(logits)
-        logits = self.fc_5(logits)
-        logits = self.dropout(logits)  # N x 1, where N = # of candidates
+        logits = self.fc_5(logits)  # N x 1, where N = # of candidates
 
         # Compute the masked softmax based on available candidates
         masked_logits = torch.zeros(len(candidate_indices)).to(self.device)
