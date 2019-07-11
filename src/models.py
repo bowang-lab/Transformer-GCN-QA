@@ -5,6 +5,7 @@ from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
 
 from torch_geometric.nn import RGCNConv
+from torch_geometric.data import NeighborSampler
 
 from .constants import CLS
 from .constants import PAD
