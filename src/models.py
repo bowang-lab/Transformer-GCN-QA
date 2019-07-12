@@ -1,3 +1,5 @@
+import math
+
 import spacy
 import torch
 from pytorch_pretrained_bert import BertModel
@@ -5,7 +7,7 @@ from pytorch_pretrained_bert import BertTokenizer
 from torch import nn
 
 from torch_geometric.nn import RGCNConv
-from torch_geometric.data import NeighborSampler
+from torch_geometric.data import NeighborSampler, Data
 
 from .constants import CLS
 from .constants import PAD
@@ -144,7 +146,9 @@ class TransformerGCNQA(nn.Module):
                  n_rgcn_layers=3,
                  n_rels=3,
                  rgcn_size=512,
-                 n_rgcn_bases=2, **kwargs):
+                 n_rgcn_bases=2,
+                 node_batch_size=1,
+                 neighbor_prob=0.05, **kwargs):
         super().__init__()
         # TODO (John): This function is called multiple times. Find way to call it once.
         self.device, _ = get_device(self)
@@ -158,10 +162,15 @@ class TransformerGCNQA(nn.Module):
         # Hyperparameters of the model
         self.dropout_rate = dropout_rate
 
+        # RGCN hyperparameters
         self.n_rgcn_layers = n_rgcn_layers
         self.n_rels = n_rels
         self.rgcn_size = rgcn_size
         self.n_rgcn_bases = n_rgcn_bases
+
+        # `NeighborSampler` parameters.
+        self.node_batch_size = node_batch_size
+        self.neighbor_prob = neighbor_prob
 
         # Layers of the model
         self.fc_1 = nn.Linear(1536, 786)
@@ -253,19 +262,32 @@ class TransformerGCNQA(nn.Module):
         """
         encoded_query = self.encode_query(query)
 
-        x = self.encode_query_aware_mentions(encoded_query, encoded_mention)
+        feats = self.encode_query_aware_mentions(encoded_query, encoded_mention)
+        # TODO: `data` should be passed directly from the loader so it doesn't
+        # have to be created in the forward pass
+        data = Data(x=feats.cpu(), edge_index=graph[[0, 1], :].cpu(), edge_attr=graph[2, :].cpu())
+        loader = NeighborSampler(data,
+                                 size=self.neighbor_prob,
+                                 num_hops=self.n_rgcn_layers,
+                                 batch_size=self.node_batch_size,
+                                 shuffle=False,
+                                 add_self_loops=False,
+                                 bipartite=False)
 
-        # Separate graph into edge tensor and edge relation type tensor
-        edge_index = graph[[0, 1], :]
-        edge_type = graph[2, :]
+        # Split graph into batches and store features for each batch
+        post_gcn_x = []
+        for subdata in loader(torch.arange(feats.shape[0])):
+            x = feats[subdata.n_id]
+            edge_index = subdata.edge_index
+            edge_type = data.edge_attr[subdata.e_id]
+            
+            for _ in range(self.n_rgcn_layers):
+                x = self.rgcn_layer(x.to(self.device), edge_index.to(self.device), edge_type.to(self.device))
+            # TODO: add skip connections later.
+            post_gcn_x.append(x[subdata.sub_b_id])
 
-        rgcn_layers_sum = torch.zeros_like(x)
-        for _ in range(self.n_rgcn_layers):
-            x = self.rgcn_layer(x, edge_index, edge_type)
-            # TODO (Duncan): Can add NL activations here if we want
-            rgcn_layers_sum += x
-
-        x = rgcn_layers_sum
+        # Concatenate features from each batch
+        x = torch.cat(post_gcn_x)
 
         # Concatenate summed R-GCN output with query
         x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
