@@ -3,6 +3,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from ..constants import TRAIN_SIZE_THRESHOLD
+from ..constants import EVAL_SIZE_THRESHOLD
 from .model_utils import get_device
 
 
@@ -14,8 +15,10 @@ def warn_about_big_graphs(dataloaders):
     partitions, a random guess is made on these graphs.
     """
     for partition in dataloaders:
+        threshold = TRAIN_SIZE_THRESHOLD if partition == 'train' else EVAL_SIZE_THRESHOLD
+
         big_graphs = sum([1 for _, _, graph, _ in dataloaders[partition]
-                          if graph.shape[-1] == 0 or graph.shape[-1] > TRAIN_SIZE_THRESHOLD])
+                          if graph.shape[-1] == 0 or graph.shape[-1] > threshold])
         perc_dropped = big_graphs / len(dataloaders[partition])
 
         if partition == 'train':
@@ -132,7 +135,7 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
 
                         # For empty graphs or graphs too large to fit into memory
                         # make a random guess
-                        if graph.shape[-1] == 0 or graph.shape[-1] >= TRAIN_SIZE_THRESHOLD:
+                        if graph.shape[-1] == 0 or graph.shape[-1] >= EVAL_SIZE_THRESHOLD:
                             pred = torch.randint(0, target.shape[-1], (1,)).item()
                             if target.squeeze(0)[pred]:
                                 eval_acc += 1
@@ -169,6 +172,8 @@ def train(model, optimizer, processed_dataset, dataloaders, **kwargs):
                     writer.add_scalar('best_dev_acc', best_dev_acc, best_dev_epoch)
 
                 print(f'{partition.title()} accuracy: {eval_acc:.2%}')
+
+        torch.cuda.empty_cache()
 
     print(f'Best dev accuracy was {best_dev_acc:.2%} on epoch: {best_dev_epoch}')
 
