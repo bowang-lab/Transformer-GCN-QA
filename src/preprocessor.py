@@ -27,7 +27,7 @@ class Preprocessor(object):
         # Adds coref to spaCy pipeline
         neuralcoref.add_to_pipe(self.nlp, greedyness=NEURALCOREF_GREEDYNESS)
 
-    def transform(self, dataset, model=None):
+    def transform(self, dataset, model, retain_stopwords=False):
         """Extracts `dataset` everything needed for graph construction and training.
 
         For the given Wiki- or MedHop `dataset`, returns a 5-tuple containing everything we need
@@ -68,6 +68,9 @@ class Preprocessor(object):
             model (Torch.nn): Any model that defines a `predict_on_tokens()` method, which accepts
                 a list containining a tokenized sentence and returns a contextualized embedding for
                 each token.
+            retain_stopwords (bool): Optional, True if candidates that are stopwords should be
+                retained. Otherwise, candidates corresponding to stopwords are removed. Defaults to
+                False.
 
         Returns:
             A 5-tuple of dictionaries, keyed by partition, containing everything we need for graph
@@ -92,14 +95,19 @@ class Preprocessor(object):
             for example in tqdm(training_examples, dynamic_ncols=True):
 
                 example_id = example['id']
-                query = example['query'].lower()
-                answer = example['answer'].lower()
-                candidates = example['candidates']
+                query = example['query']
+                answer = example['answer']
+
+                if retain_stopwords:
+                    candidates = example['candidates']
+                else:
+                    candidates = [candidate for candidate in example['candidates']
+                                  if candidate not in self.nlp.Defaults.stop_words]
 
                 processed_dataset[partition][example_id] = {
                     'mentions': [],
                     'query': query,
-                    'candidate_indices': {candidate.lower(): [] for candidate in candidates},
+                    'candidate_indices': {candidate: [] for candidate in candidates},
                 }
 
                 # One-hot encoding of answer
