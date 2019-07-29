@@ -4,6 +4,7 @@ Usage:
     `python -m src.cli.train -i ./path/to/preprocessed/dataset`
 """
 import argparse
+from pprint import pprint
 
 from torch.optim import Adam
 
@@ -47,20 +48,20 @@ if __name__ == '__main__':
                         help='Optional, dropout rate. Defaults to 0.1.')
     parser.add_argument('--epochs', default=20, type=int, required=False,
                         help='Optional, number of epochs to train the model for. Defaults to 20.')
-    parser.add_argument('--grad_norm', default=0.0, type=float, required=False,
+    parser.add_argument('--grad_norm', default=1.0, type=float, required=False,
                         help=('Optional, maximum L2 norm to clip all parameter gradients. Set to'
-                              '0 to turn off. Defaults to 0'))
+                              '0 to turn off. Defaults to 1'))
     parser.add_argument('-lr', '--learning_rate', default=1e-4, type=float, required=False,
                         help='Optional, learning rate for the optimizer. Defaults to 1e-4.')
     # R-GCN
     parser.add_argument('--n_rgcn_layers', default=3, type=int, required=False,
                         help='Optional, number of layers in the R-GCN. Defaults to 3.')
     parser.add_argument('--n_rels', default=3, type=int, required=False,
-                        help=('Optional, number of relations in the R-GCN. Set this to 3 if graphs'
-                              ' were built with complement=True, otherwise set to 4. Defaults to'
+                        help=('Optional, number of relations in the R-GCN. Set this to 4 if graphs'
+                              ' were built with complement=True, otherwise set to 3. Defaults to'
                               ' 3.'))
-    parser.add_argument('--rgcn_size', default=128, type=int, required=False,
-                        help='Optional, dimensionality of the R-GCN layers. Defaults to 128.')
+    parser.add_argument('--rgcn_size', default=512, type=int, required=False,
+                        help='Optional, dimensionality of the R-GCN layers. Defaults to 512.')
     parser.add_argument('--n_rgcn_bases', default=2, type=int, required=False,
                         help='TODO (Duncan).')
     # Other
@@ -68,7 +69,11 @@ if __name__ == '__main__':
                         help=('Optional, evaluate model on every evaluation_step number of epochs.'
                               'E.g. if evaluation_step==2, model is evaluated on every 2nd epoch'
                               ' Defaults to 1.'))
+    parser.add_argument('--verbose', action='store_true')
 
-    args = vars(parser.parse_args())
+    kwargs = vars(parser.parse_args())
 
-    main(**args)
+    if kwargs['verbose']:
+        pprint(kwargs)
+
+    main(**kwargs)
