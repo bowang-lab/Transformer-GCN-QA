@@ -34,6 +34,7 @@ setuptools.setup(
         "spacy>=2.1.4",
         "neuralcoref>=4.0",
         "pytorch-pretrained-bert>=0.6.1",
+        "tensorboard>=1.13.1",
     ],
     extras_require={
         "dev": [
