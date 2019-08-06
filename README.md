@@ -43,7 +43,7 @@ or install by cloning this repository
 
 and then using either `pip`
 
-```bashen_core_web_lg
+```bash
 (transformer-gcn-qa) $ pip install -e .
 ```
 
