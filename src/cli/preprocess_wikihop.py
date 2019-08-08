@@ -10,38 +10,41 @@ from ..utils.dataset_utils import load_wikihop
 from ..utils.generic_utils import make_dir
 
 
-def main(input_directory, output_directory):
+def main(**kwargs):
     """Saves a preprocessed Wiki- or MedHop dataset to disk.
 
     Creates a json file for each partition in the the given Wiki- or MedHop dataset.
-    (`input_directory`) which contains everything we need for graph construction along with a
+    (`kwargs['input']`) which contains everything we need for graph construction along with a
     serialized torch Tensor containing mention encodings. The json files are saved to
-    `output_directory/<partition>.json` and the serialized tensor to
-    `output_directory/embeddings.pt` (note that this must me loaded with `torch.load()`).
+    `kwargs['output']/<partition>.json` and the serialized tensor to
+    `kwargs['output']/embeddings.pt` (note that this must me loaded with `torch.load()`).
 
     Args:
-        input_directory (str): Path to the Wiki- or MedHop dataset.
-        output_directory (str): Path to save the processed output for the Wiki- or MedHop dataset.
+        kwargs['input'] (str): Path to the Wiki- or MedHop dataset.
+        kwargs['output'] (str): Path to save the processed output for the Wiki- or MedHop dataset.
+        kwargs['retain_stopwords'] (bool): Optional, True if candidates that are stopwords should be
+            retained. Otherwise, candidates corresponding to stopwords are removed. Defaults to
+            False.
 
     Returns:
         Two-tuple containing the `processed_dataset`, a dictionary containing everything we need
-        from the Wiki- or MedHop dataset at `input_directory` for graph construction, and
+        from the Wiki- or MedHop dataset at `kwargs['input']` for graph construction, and
         `embeddings`, a .pt file containing a serialized tensor of encoded mentions.
     """
-    dataset = load_wikihop(input_directory)
+    dataset = load_wikihop(kwargs['input'])
     preprocessor = Preprocessor()
     model = BERT()
 
     # Process the dataset, extracting what we need for graph construction
     (processed_dataset, encoded_mentions, encoded_mentions_split_sizes, targets,
-     targets_split_sizes) = preprocessor.transform(dataset, model)
+     targets_split_sizes) = preprocessor.transform(dataset, model, kwargs['retain_stopwords'])
 
     # Make output directory if it does not exist
-    make_dir(output_directory)
+    make_dir(kwargs['output'])
 
     for partition in processed_dataset:
         # Make a directory for each partition
-        partition_directory = os.path.join(output_directory, partition)
+        partition_directory = os.path.join(kwargs['output'], partition)
         make_dir(partition_directory)
 
         # Create .json filepaths
@@ -71,7 +74,7 @@ def main(input_directory, output_directory):
 
 if __name__ == '__main__':
     description = '''Creates a set of files for each partition in the the given Wiki- or MedHop
-    dataset at `input_directory` which contain everything we need for graph construction and
+    dataset at `kwargs['input']` which contain everything we need for graph construction and
     training.
     '''
     parser = argparse.ArgumentParser(description=description)
@@ -79,7 +82,11 @@ if __name__ == '__main__':
                         help='Path to the Wiki- or MedHop dataset.')
     parser.add_argument('-o', '--output', required=True,
                         help='Path to save the processed output for the Wiki- or MedHop dataset.')
+    parser.add_argument('-r', '--retain_stopwords', action='store_true',
+                        help=('Optional, pass this argument if candidates that are stopwords should'
+                              ' be retained. Otherwise, candidates corresponding to stopwords are'
+                              ' removed.'))
 
-    args = parser.parse_args()
+    kwargs = vars(parser.parse_args())
 
-    main(args.input, args.output)
+    main(**kwargs)

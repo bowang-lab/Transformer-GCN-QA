@@ -32,10 +32,9 @@ setuptools.setup(
     ],
     install_requires=[
         "spacy>=2.1.4",
-        # SpaCy language model, straight from GitHub
-        "en_core_web_lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-2.1.0/en_core_web_lg-2.1.0.tar.gz",
         "neuralcoref>=4.0",
         "pytorch-pretrained-bert>=0.6.1",
+        "tensorboard>=1.13.1",
     ],
     extras_require={
         "dev": [
