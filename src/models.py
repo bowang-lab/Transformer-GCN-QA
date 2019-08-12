@@ -170,9 +170,16 @@ class TransformerGCNQA(nn.Module):
 
         self.rgcn_layer = RGCNConv(self.rgcn_size, self.rgcn_size, self.n_rels, self.n_rgcn_bases)
 
-        self.fc_3 = nn.Linear(self.rgcn_size + 768, 256)
-        self.fc_4 = nn.Linear(256, 128)
-        self.fc_5 = nn.Linear(128, 1)
+
+        # self.fc_3 = nn.Linear(self.rgcn_size + 768, 256)
+        # self.fc_4 = nn.Linear(256, 128)
+        # self.fc_5 = nn.Linear(128, 1)
+
+        ### initialize the decoder's weights as the query encoding
+        self.decoder_fc = nn.Linear(768, self.rgcn_size)
+        # something goes here
+        self.fc_3 = nn.Linear(self.rgcn_size, 128)
+        self.fc_4 = nn.Linear(128, 1)
 
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -267,14 +274,16 @@ class TransformerGCNQA(nn.Module):
         x = rgcn_layers_sum
 
         # Concatenate summed R-GCN output with query
-        x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
+        # x_query_cat = torch.cat([x, encoded_query.expand((len(x), -1))], dim=-1)
 
         # Affine transformations
-        logits = self.fc_3(x_query_cat)
+        logits = self.fc_3(x)
+        # query bmm logits instead of cat
+        logits = torch.bmm(logits, encoded_query) # hope the dims match up
         logits = self.dropout(logits)
         logits = self.fc_4(logits)
-        logits = self.dropout(logits)
-        logits = self.fc_5(logits)  # N x 1, where N = # of candidates
+        # logits = self.dropout(logits)
+        # logits = self.fc_5(logits)  # N x 1, where N = # of candidates
 
         # Compute the masked softmax based on available candidates
         masked_logits = torch.zeros(len(candidate_indices)).to(self.device)
